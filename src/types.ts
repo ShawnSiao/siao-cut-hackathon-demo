@@ -1,0 +1,795 @@
+import type { AgentRunStatus, AutoWorkflowStage, AutoWorkflowStatus, BackgroundJobStatus, CoreErrorCode, TaskStatus, TranscriptionJobStatus, WorkflowStatus } from "./generated/core-contract";
+export type { AgentRunStatus, AutoWorkflowStage, AutoWorkflowStatus, BackgroundJobStatus, CoreErrorCode, KnownCoreErrorCode, TaskStatus, TranscriptionJobStatus, WorkflowStatus } from "./generated/core-contract";
+
+export type Segment = {
+  id: string;
+  start: number;
+  end: number;
+  text: string;
+  confidence: number | null;
+};
+
+export type CodexHealth = {
+  available: boolean;
+  authenticated: boolean;
+  version: string | null;
+  authMode: string | null;
+};
+
+export type AgentRunBatch = {
+  id: string;
+  ordinal: number;
+  status: AgentRunStatus;
+  segmentIds: string[];
+  codexThreadId: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  attemptCount: number;
+};
+
+export type AgentRun = {
+  id: string;
+  taskId: string;
+  projectId: string;
+  provider: string;
+  status: AgentRunStatus;
+  baseVersionId: string;
+  progress: number;
+  currentBatch: number;
+  batchCount: number;
+  timeoutSeconds: number;
+  cliVersion: string | null;
+  authMode: string | null;
+  codexThreadId: string | null;
+  cancelRequestedAt: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  workerPid: number | null;
+  attemptCount: number;
+  batches: AgentRunBatch[];
+};
+
+export type WordTiming = {
+  id: string;
+  segmentId: string;
+  start: number;
+  end: number;
+  text: string;
+  confidence: number | null;
+};
+
+export type SpeechPause = {
+  start: number;
+  end: number;
+  duration: number;
+  previousWordId: string;
+  nextWordId: string;
+  severity: "pause" | "long_pause";
+};
+
+export type SpeechEvidence = {
+  kind: "filler" | "low_confidence";
+  wordId: string;
+  segmentId: string;
+  start: number;
+  end: number;
+  text: string;
+  confidence: number | null;
+};
+
+export type SpeechInsights = {
+  status: "ready" | "insufficient_evidence";
+  analyzerVersion: string;
+  thresholds: {
+    pauseSeconds: number;
+    longPauseSeconds: number;
+    lowConfidence: number;
+  };
+  spanDurationSeconds: number;
+  spokenDurationSeconds: number;
+  tokenCount: number;
+  tokensPerMinute: number;
+  pauseCount: number;
+  longPauseCount: number;
+  totalPauseDurationSeconds: number;
+  fillerCount: number;
+  lowConfidenceCount: number;
+  pauses: SpeechPause[];
+  evidence: SpeechEvidence[];
+};
+
+export type Translation = {
+  status: "current" | "stale" | string;
+  updatedAt: string;
+  glossaryVersion: number;
+  segments: Array<{
+    segmentId: string;
+    text: string;
+    sourceHash: string;
+    status: "current" | "stale" | "quality_failed" | string;
+    updatedAt: string;
+  }>;
+};
+
+export type Glossary = {
+  version: number;
+  updatedAt: string;
+  entries: Array<{ language: string; source: string; target: string }>;
+};
+
+export type UiLocale = "zh-CN" | "en-US";
+export type TranscriptionLanguage = "auto" | "en" | "zh";
+
+export type Task = {
+  id: string;
+  kind: string;
+  language: string | null;
+  status: TaskStatus;
+  createdAt?: string;
+  lease?: { worker: string; id: string; expiresAt: string } | null;
+  lastActivity?: { kind: string; progress: number | null; message: string; createdAt: string } | null;
+  stageCode?: string | null;
+  progress: number;
+  errorMessage: string | null;
+  errorCode?: CoreErrorCode | null;
+  workflowId?: string | null;
+  instructionLocale: UiLocale;
+};
+
+export type AgentPatchItem = {
+  id: string;
+  segmentId: string | null;
+  target: string;
+  beforeText: string;
+  afterText: string;
+  currentText: string;
+  reason: string;
+  confidence: number | null;
+  status: string;
+};
+
+export type AgentPatchSet = {
+  id: string;
+  taskId: string;
+  kind: string;
+  language: string | null;
+  status: string;
+  baseVersionId: string;
+  createdAt: string;
+  items: AgentPatchItem[];
+};
+
+export type Workflow = {
+  id: string;
+  kind: string;
+  language: string | null;
+  status: WorkflowStatus;
+  taskId: string;
+  createdAt: string;
+  updatedAt: string;
+  instructionLocale: UiLocale;
+};
+
+export type Version = { id: string; reason: string; createdAt: string };
+
+export type Edit = {
+  id: string;
+  kind: string;
+  status: string;
+  segmentId: string;
+  start: number;
+  end: number;
+  reason: string;
+  cutRange?: {
+    fromWordId: string;
+    toWordId: string;
+    selectedStart: number;
+    selectedEnd: number;
+    paddingMs: number;
+    transcriptHash: string;
+    stale: boolean;
+  } | null;
+  suggestion?: {
+    suggestionType: "standalone_filler" | "adjacent_repetition" | "speech_restart" | string;
+    confidence: number;
+    detectorVersion: string;
+  } | null;
+};
+
+export type CutPreview = {
+  cutId: string;
+  previewStart: number;
+  cutStart: number;
+  cutEnd: number;
+  previewEnd: number;
+  skipRange: boolean;
+};
+
+export type TimelineMap = {
+  sourceDuration: number;
+  outputDuration: number;
+  keptRanges: Array<{ sourceStart: number; sourceEnd: number; outputStart: number; outputEnd: number }>;
+  cuts: Array<{ editIds: string[]; sourceStart: number; sourceEnd: number; outputAt: number }>;
+};
+
+export type MediaArtifacts = {
+  status: string;
+  proxyPath: string | null;
+  waveformPath: string | null;
+  thumbnails: string[];
+  sourceSha256: string;
+  updatedAt: string;
+  errorMessage: string | null;
+};
+
+export type ExportJob = {
+  id: string;
+  projectId: string;
+  outputPath: string;
+  status: BackgroundJobStatus;
+  stageCode?: string | null;
+  progress: number;
+  burnSubtitles: boolean;
+  language: string | null;
+  bilingual: boolean;
+  subtitleMode: "source" | "translated" | "bilingual";
+  allowStaleTranslation: boolean;
+  canvasSettings: CanvasSettings;
+  subtitleStyle: SubtitleStyle;
+  cancelRequestedAt: string | null;
+  errorMessage: string | null;
+  errorCode?: CoreErrorCode | null;
+  manifestPath: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  workerPid?: number | null;
+};
+
+export type CanvasSettings = {
+  aspectRatio: "source" | "9:16";
+  framing: "contain-blur" | "cover-center";
+};
+
+export type SubtitleStylePreset = "compact" | "standard" | "emphasis";
+export type SubtitlePosition = "bottom" | "center";
+
+export type SubtitleStyle = {
+  preset: SubtitleStylePreset;
+  position: SubtitlePosition;
+  fontFamily: string;
+  bold: boolean;
+  fontSize: number;
+  secondaryFontSize: number;
+  primaryColor: string;
+  secondaryColor: string;
+  outlineColor: string;
+  outlineWidth: number;
+  shadowDepth: number;
+  safeMarginPercent: number;
+};
+
+export type SubtitleStylePresetOption = {
+  id: SubtitleStylePreset;
+  label: string;
+  description: string;
+};
+
+export type ModelStatus = {
+  id: string;
+  name: string;
+  fileName: string;
+  description: string;
+  source: string;
+  url: string;
+  size: number;
+  sha256: string;
+  license: string;
+  recommended: boolean;
+  path: string;
+  installed: boolean;
+  bytesOnDisk: number;
+  verified: boolean | null;
+  verificationStatus: "verified" | "failed" | "not_checked" | "not_installed";
+};
+
+export type ModelDownloadJob = {
+  id: string;
+  modelId: string;
+  status: BackgroundJobStatus;
+  stageCode?: string | null;
+  progress: number;
+  bytesDownloaded: number;
+  totalBytes: number;
+  targetPath: string;
+  cancelRequestedAt: string | null;
+  errorMessage: string | null;
+  errorCode?: CoreErrorCode | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  workerPid?: number | null;
+};
+
+export type SourcePreview = {
+  originalUrl: string;
+  webpageUrl: string;
+  siteMediaId: string;
+  extractor: string;
+  title: string;
+  durationSeconds: number;
+  fileSizeBytes: number | null;
+  fileSizeKnown: boolean;
+  thumbnailUrl: string | null;
+  toolVersion: string;
+  toolSha256: string;
+  requiresConfirmation: boolean;
+};
+
+export type SourceImportJob = {
+  id: string;
+  projectId: string | null;
+  originalUrl: string;
+  webpageUrl: string;
+  siteMediaId: string;
+  extractor: string;
+  title: string;
+  durationSeconds: number;
+  fileSizeBytes: number | null;
+  status: BackgroundJobStatus;
+  stageCode?: string | null;
+  progress: number;
+  bytesDownloaded: number;
+  totalBytes: number | null;
+  outputDirectory: string;
+  outputPath: string | null;
+  outputSha256: string | null;
+  toolVersion: string;
+  toolSha256: string;
+  cancelRequestedAt: string | null;
+  errorMessage: string | null;
+  errorCode?: CoreErrorCode | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  workerPid?: number | null;
+  attemptCount: number;
+};
+
+export type AudioRisk = {
+  kind: "silence" | "suspected_clipping" | "loudness_low" | "loudness_high";
+  start: number;
+  end: number;
+  measuredValue: number;
+  threshold: number;
+  unit: "seconds" | "LUFS" | "dBFS" | string;
+  toolVersion: string;
+};
+
+export type AudioAnalysisReport = {
+  analyzerVersion: string;
+  toolVersion: string;
+  durationSeconds: number;
+  integratedLoudnessLufs: number | null;
+  truePeakDbfs: number | null;
+  silenceDurationSeconds: number;
+  thresholds: {
+    silenceNoiseDb: number;
+    silenceMinSeconds: number;
+    clippingPeakDbfs: number;
+    quietLoudnessLufs: number;
+    loudLoudnessLufs: number;
+  };
+  risks: AudioRisk[];
+};
+
+export type AudioAnalysisJob = {
+  id: string;
+  projectId: string;
+  status: BackgroundJobStatus;
+  stageCode?: string | null;
+  progress: number;
+  report: AudioAnalysisReport | null;
+  cancelRequestedAt: string | null;
+  errorMessage: string | null;
+  errorCode?: CoreErrorCode | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  workerPid?: number | null;
+  attemptCount: number;
+};
+
+export type SpeakerAssetStatus = {
+  id: string;
+  name: string;
+  source: string;
+  license: string;
+  size: number;
+  sha256: string;
+  installed: boolean;
+  verified: boolean | null;
+  verificationStatus: "verified" | "failed" | "not_checked" | "not_installed";
+};
+
+export type SpeakerPackageStatus = {
+  id: string;
+  name: string;
+  runtimeVersion: string;
+  description: string;
+  source: string;
+  license: string;
+  downloadSize: number;
+  installedSize: number;
+  installed: boolean;
+  verified: boolean | null;
+  verificationStatus: "verified" | "failed" | "not_checked" | "not_installed";
+  assets: SpeakerAssetStatus[];
+};
+
+export type SpeakerIdentity = {
+  id: string;
+  sourceLabel: string;
+  label: string;
+  colorIndex: number;
+  createdAt: string;
+};
+
+export type SpeakerTurn = {
+  id: string;
+  speakerId: string;
+  start: number;
+  end: number;
+  confidence: number | null;
+  source: string;
+  modelVersion: string;
+  createdAt: string;
+};
+
+export type SegmentSpeaker = {
+  segmentId: string;
+  speakerId: string;
+  source: "overlap" | "manual" | string;
+  confidence: number | null;
+  updatedAt: string;
+};
+
+export type SpeakerTrack = {
+  status: "not_analyzed" | "ready" | "no_speech" | string;
+  runtimeVersion: string;
+  segmentationModel: string;
+  embeddingModel: string;
+  providerId: string;
+  modelId: string;
+  sourceKind: "cascade" | "end_to_end" | string;
+  generatedAt: string | null;
+  speakers: SpeakerIdentity[];
+  turns: SpeakerTurn[];
+  associations: SegmentSpeaker[];
+};
+
+export type SpeakerJob = {
+  id: string;
+  kind: "install" | "analyze";
+  projectId: string | null;
+  status: BackgroundJobStatus;
+  stage: string;
+  stageCode?: string | null;
+  progress: number;
+  bytesDownloaded: number;
+  totalBytes: number;
+  cancelRequestedAt: string | null;
+  errorMessage: string | null;
+  errorCode?: CoreErrorCode | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  workerPid?: number | null;
+  attemptCount: number;
+};
+
+export type AutoWorkflow = {
+  id: string;
+  inputKind: "local" | "url";
+  inputValue: string;
+  title: string | null;
+  confirmedMediaId: string | null;
+  projectId: string | null;
+  sourceImportId: string | null;
+  modelPath: string;
+  transcribeLanguage: string | null;
+  translationLanguage: string | null;
+  outputPath: string;
+  burnSubtitles: boolean;
+  subtitleMode: "source" | "translated" | "bilingual";
+  status: AutoWorkflowStatus;
+  currentStage: AutoWorkflowStage;
+  stageCode?: string | null;
+  progress: number;
+  transcriptVersionId: string | null;
+  agentTaskId: string | null;
+  exportJobId: string | null;
+  audit: Record<string, unknown> | null;
+  cancelRequestedAt: string | null;
+  errorMessage: string | null;
+  errorCode?: CoreErrorCode | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  workerPid?: number | null;
+  attemptCount: number;
+  instructionLocale: UiLocale;
+};
+
+export type TranscriptionProviderConfig = {
+  providerId: "moss_openai" | string;
+  endpoint: string;
+  modelId: string;
+  updatedAt: string;
+};
+
+export type TranscriptionProviderHealth = {
+  providerId: string;
+  endpoint: string;
+  modelId: string;
+  state: "healthy" | "unavailable";
+  detail: string;
+  checkedAt: string;
+};
+
+export type TranscriptionJob = {
+  id: string;
+  projectId: string;
+  providerId: string;
+  endpoint: string;
+  modelId: string;
+  language: string | null;
+  prompt: string | null;
+  hotwords: string[];
+  status: TranscriptionJobStatus;
+  stage: string;
+  resultRunId: string | null;
+  baseVersionId: string | null;
+  sourceSha256: string | null;
+  inputAudioSha256: string | null;
+  cancelRequestedAt: string | null;
+  errorMessage: string | null;
+  errorCode?: CoreErrorCode | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  workerPid?: number | null;
+  attemptCount: number;
+  candidate: TranscriptionCandidateSummary | null;
+};
+
+export type TranscriptionCandidateSummary = {
+  runId: string;
+  segmentCount: number;
+  speakerCount: number;
+  durationSeconds: number | null;
+  warningCount: number;
+  baseVersionId: string | null;
+  currentVersionId: string | null;
+  canApply: boolean;
+};
+
+export type ProjectDeletionPreflight = {
+  projectId: string;
+  deletable: boolean;
+  blockers: Array<{ kind: string; id: string; status: string }>;
+};
+
+export type TranscriptionReviewItem = {
+  id: string;
+  projectId: string;
+  runId: string;
+  segmentId: string | null;
+  severity: "info" | "warning" | "error";
+  kind: "missing_punctuation" | "rapid_speaker_switch" | "short_fragment" | string;
+  message: string;
+  status: "open" | "resolved" | "ignored";
+  createdAt: string;
+  resolvedAt: string | null;
+};
+
+export type AutoWorkflowEvent = {
+  id: number;
+  workflowId: string;
+  stage: AutoWorkflowStage;
+  status: AutoWorkflowStatus;
+  progress: number;
+  message: string;
+  createdAt: string;
+};
+
+export type Project = {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  canvasSettings: CanvasSettings;
+  subtitleStyle: SubtitleStyle;
+  media: {
+    sourcePath: string;
+    extension: string;
+    durationSeconds: number | null;
+  };
+  mediaArtifacts: MediaArtifacts | null;
+  timeline: TimelineMap;
+  transcript: { sourceLanguage: string; segments: Segment[]; words: WordTiming[] };
+  subtitleQuality: SubtitleQualityReport;
+  speechInsights: SpeechInsights;
+  translations: Record<string, Translation>;
+  glossary: Glossary;
+  edits: Edit[];
+  tasks: Task[];
+  versions: Version[];
+  history: { canUndo: boolean; canRedo: boolean; currentVersionId: string | null };
+  patchSets: AgentPatchSet[];
+  workflows: Workflow[];
+};
+
+export type SubtitleIssueKind = "empty_text" | "invalid_timing" | "out_of_bounds" | "overlap" | "duration_too_long" | "line_too_long" | "too_many_lines" | "reading_speed_high" | "gap_too_short";
+
+export type SubtitleQualityIssue = {
+  id: string;
+  kind: SubtitleIssueKind;
+  severity: "warning" | "error";
+  segmentId: string;
+  relatedSegmentId: string | null;
+  start: number;
+  end: number;
+  message: string;
+  measuredValue: number | null;
+  threshold: number | null;
+};
+
+export type SubtitleQualityReport = {
+  status: "good" | "warning" | "error";
+  statusLabel: string;
+  issueCount: number;
+  errorCount: number;
+  warningCount: number;
+  thresholds: {
+    maxDurationSeconds: number;
+    maxLineCharacters: number;
+    maxCharactersPerSecond: number;
+    minGapSeconds: number;
+    maxLines: number;
+  };
+  issues: SubtitleQualityIssue[];
+};
+
+export type SubtitleImportPreview = {
+  format: "srt" | "vtt" | "ass";
+  sourcePath: string;
+  sha256: string;
+  segmentCount: number;
+  segments: Segment[];
+  quality: SubtitleQualityReport;
+  canImport: boolean;
+  requiresConfirmation: boolean;
+};
+
+export type SubtitleStructureEdit = {
+  operation: "split" | "merge" | "timing" | "offset";
+  affectedSegmentIds: string[];
+  createdSegmentId: string | null;
+  removedSegmentIds: string[];
+  impact: {
+    translationsMarkedStale: number;
+    translationSegmentsRemoved: number;
+    wordsReassigned: number;
+    wordsRemoved: number;
+    wordsShifted: number;
+    editsRestored: number;
+    wordCutsInvalidated: number;
+    agentPatchItemsRebased: number;
+    speakerAssociationsCopied: number;
+    speakerAssociationsRemoved: number;
+  };
+  project: Project;
+};
+
+export type CoreEnvelope = {
+  apiVersion: string;
+  status: "ok" | "error";
+  error?: { code: CoreErrorCode; message: string; technicalDetails?: string | null };
+  code?: CoreErrorCode;
+  message?: string;
+  taskId?: string;
+  agentRunId?: string;
+  codex?: CodexHealth;
+  agentRun?: AgentRun;
+  agentRuns?: AgentRun[];
+  project?: Project;
+  projects?: Project[];
+  job?: ExportJob;
+  jobs?: ExportJob[];
+  models?: ModelStatus[];
+  model?: ModelStatus;
+  modelJob?: ModelDownloadJob;
+  modelJobs?: ModelDownloadJob[];
+  source?: SourcePreview;
+  sourceJob?: SourceImportJob;
+  sourceJobs?: SourceImportJob[];
+  workflow?: AutoWorkflow;
+  workflows?: AutoWorkflow[];
+  events?: AutoWorkflowEvent[];
+  cut?: Edit;
+  preview?: CutPreview;
+  suggestions?: Edit[];
+  speechInsights?: SpeechInsights;
+  audioAnalysisJob?: AudioAnalysisJob | null;
+  speakerPackage?: SpeakerPackageStatus;
+  speakerTrack?: SpeakerTrack;
+  speakerJob?: SpeakerJob;
+  speakerJobs?: SpeakerJob[];
+  config?: TranscriptionProviderConfig;
+  providerHealth?: TranscriptionProviderHealth;
+  transcriptionJob?: TranscriptionJob | null;
+  transcriptionJobs?: TranscriptionJob[];
+  deletionPreflight?: ProjectDeletionPreflight;
+  reviewItem?: TranscriptionReviewItem;
+  reviewItems?: TranscriptionReviewItem[];
+  subtitleQuality?: SubtitleQualityReport;
+  subtitleStyle?: SubtitleStyle;
+  subtitleStylePresets?: SubtitleStylePresetOption[];
+  subtitleImportPreview?: SubtitleImportPreview;
+  structureEdit?: SubtitleStructureEdit;
+  subtitleImport?: {
+    format: "srt" | "vtt" | "ass";
+    sha256: string;
+    insertedSegments: number;
+    quality: SubtitleQualityReport;
+    project: Project;
+  };
+  [key: string]: unknown;
+};
+
+export type RuntimeInfo = {
+  corePath: string;
+  coreApiVersion: string;
+  ffmpegConfigured: boolean;
+  asrConfigured: boolean;
+  vadConfigured: boolean;
+  ytDlpConfigured: boolean;
+  asrBackend: string;
+  asrDevice: string | null;
+  availableAsrBackends: string[];
+  ffmpegPath: string | null;
+  whisperPath: string | null;
+  ytDlpPath: string | null;
+  runtimeManifestPath: string | null;
+  defaultModelPath: string;
+  defaultModelAvailable: boolean;
+  logDirectory: string | null;
+  diagnosticsAvailable: boolean;
+};
+
+export type UpdatePolicy = {
+  currentVersion: string;
+  enabled: boolean;
+  automaticCheckIntervalHours: number;
+  disabledReason: string | null;
+};
+
+export type UpdateMetadata = {
+  version: string;
+  currentVersion: string;
+  notes: string | null;
+  publishedAt: string | null;
+  sizeBytes: number;
+};
+
+export type UpdateDownloadEvent = {
+  event: "Started" | "Progress" | "Finished" | "Verifying";
+  data?: { contentLength?: number; chunkLength?: number };
+};
