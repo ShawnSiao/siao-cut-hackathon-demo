@@ -1,0 +1,16 @@
+@import "./styles/tokens.css";
+@import "./styles/foundation.css";
+
+:root {
+  color: var(--text-primary);
+  background: var(--bg-app);
+  font-family: var(--font-ui);
+  font-synthesis: none;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
