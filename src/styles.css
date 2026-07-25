@@ -881,3 +881,381 @@ select:focus-visible { border-color: var(--focus-ring) !important; box-shadow: 0
   .creator-flow span { padding-inline: 6px; }
   .creator-flow span i { display: none; }
 }
+
+/*
+ * Mobile hackathon preview
+ *
+ * Keep the desktop workbench unchanged. Below 900px, reflow the same controls
+ * into a readable single-column page, following SiaoSee's mobile strategy:
+ * primary content stays in the page flow and only dense local surfaces scroll.
+ */
+@media (max-width: 900px) {
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: auto;
+    min-height: 100%;
+    overflow-x: hidden;
+    overflow-y: visible;
+  }
+
+  body {
+    min-width: 320px;
+  }
+
+  .app-shell {
+    width: 100%;
+    height: auto;
+    min-height: 100dvh;
+    display: block;
+    overflow: visible;
+  }
+
+  .rail {
+    position: relative;
+    z-index: 20;
+    top: auto;
+    width: 100%;
+    height: auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 9px 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-subtle);
+    padding: max(12px, env(safe-area-inset-top)) 12px 12px;
+    box-shadow: 0 8px 24px rgba(4, 7, 9, .22);
+  }
+
+  .brand {
+    min-width: 0;
+    padding: 0;
+  }
+
+  .new-project-actions {
+    display: block;
+  }
+
+  .new-project {
+    min-height: 44px;
+    padding-inline: 12px;
+  }
+
+  .rail-advanced-actions,
+  .rail-heading,
+  .creator-readiness,
+  .privacy {
+    display: none;
+  }
+
+  .rail nav {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 7px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .rail nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .project-entry {
+    min-width: min(230px, calc(100vw - 24px));
+    flex: 0 0 auto;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-panel);
+  }
+
+  .project-link,
+  .project-delete {
+    min-height: 44px;
+  }
+
+  .runtime-link {
+    min-height: 44px;
+    margin: 0;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-control);
+  }
+
+  .locale-switch {
+    min-width: 116px;
+    padding: 0;
+  }
+
+  .locale-switch > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .locale-switch select {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .workbench {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+    padding: 15px 12px max(36px, env(safe-area-inset-bottom));
+    scrollbar-gutter: auto;
+  }
+
+  .topbar {
+    position: static;
+    top: auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "heading" "commands";
+    gap: 11px;
+    margin-bottom: 15px;
+    padding-top: 0;
+    background: transparent;
+    backdrop-filter: none;
+  }
+
+  .topbar-heading h1 {
+    white-space: normal;
+    line-height: 1.25;
+  }
+
+  .creator-command-bar {
+    width: 100%;
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    gap: 7px;
+  }
+
+  .creator-command-bar > * {
+    min-width: 0;
+  }
+
+  .creator-command-bar .ui-status {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .creator-command-bar button,
+  .creator-command-bar select {
+    min-height: 44px;
+  }
+
+  .creator-primary-action {
+    min-width: 0;
+    width: 100%;
+    padding-inline: 8px;
+  }
+
+  .creator-flow {
+    grid-template-columns: repeat(5, minmax(112px, 1fr));
+    overflow-x: auto;
+    margin-bottom: 12px;
+    scroll-snap-type: x proximity;
+    overscroll-behavior-x: contain;
+  }
+
+  .creator-flow span {
+    scroll-snap-align: start;
+  }
+
+  .creator-flow span i {
+    display: grid;
+  }
+
+  .notice,
+  .progress-strip,
+  .audio-risk-strip,
+  .transport-summary {
+    min-width: 0;
+    overflow-x: auto;
+    white-space: nowrap;
+    overscroll-behavior-x: contain;
+  }
+
+  .stage-grid,
+  .editor-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 12px;
+  }
+
+  .creator-player-header {
+    align-items: flex-start;
+  }
+
+  .creator-player-header button,
+  .timeline-toggle {
+    min-height: 40px;
+  }
+
+  .video-frame {
+    min-height: 0;
+    aspect-ratio: 16 / 9;
+  }
+
+  .video-frame video {
+    width: 100%;
+    height: 100%;
+  }
+
+  .transport-summary {
+    min-height: 44px;
+    padding-block: 8px;
+  }
+
+  .editor-grid {
+    margin-top: 12px;
+  }
+
+  .editor-grid > .transcript-panel,
+  .creator-drawer {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+  }
+
+  .editor-grid > .transcript-panel {
+    display: block;
+  }
+
+  .editor-grid > .transcript-panel > .segment-list {
+    height: auto;
+    max-height: 440px;
+    overflow-y: auto;
+  }
+
+  .panel-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 11px;
+    padding: 14px 12px 10px;
+  }
+
+  .find-replace {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: stretch;
+    gap: 7px;
+  }
+
+  .find-replace > button,
+  .find-replace > input,
+  .find-replace .search {
+    width: 100%;
+    min-width: 0;
+    min-height: 40px;
+  }
+
+  .find-replace .search {
+    grid-column: 1 / -1;
+  }
+
+  .find-replace .search input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .transcript-meta {
+    flex-wrap: wrap;
+    gap: 5px 12px;
+    padding-inline: 12px;
+  }
+
+  .moss-advanced > div,
+  .creator-advanced-transcription > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .subtitle-workbench-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+    padding-inline: 12px;
+  }
+
+  .subtitle-selection-controls,
+  .subtitle-structure-actions {
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    overscroll-behavior-x: contain;
+  }
+
+  .subtitle-selection-controls button,
+  .subtitle-structure-actions button {
+    min-height: 40px;
+    flex: 0 0 auto;
+  }
+
+  .segment-row {
+    grid-template-columns: 18px 50px minmax(0, 1fr) 38px;
+    gap: 6px;
+    padding-inline: 10px;
+  }
+
+  .creator-drawer {
+    min-height: 420px;
+  }
+
+  .creator-drawer-tabs {
+    grid-template-columns: repeat(5, minmax(56px, 1fr));
+    overflow-x: auto;
+  }
+
+  .creator-drawer-tabs button {
+    min-height: 44px;
+  }
+
+  .creator-drawer-body {
+    max-height: 600px;
+    overflow-y: auto;
+  }
+
+  .creator-agent-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .timeline-panel {
+    overflow-x: auto;
+    margin-top: 12px;
+    padding-inline: 12px;
+    overscroll-behavior-x: contain;
+  }
+
+  .timeline-panel > .section-title {
+    position: sticky;
+    z-index: 2;
+    left: 0;
+    min-width: calc(100vw - 48px);
+    background: var(--bg-panel);
+  }
+
+  .timeline-track {
+    min-width: 720px;
+  }
+
+  .runtime-settings-dialog,
+  .runtime-dialog {
+    width: calc(100vw - 20px);
+    max-height: calc(100dvh - 20px);
+  }
+
+  .runtime-dialog-header {
+    padding: 16px 16px 12px;
+  }
+
+  .runtime-dialog-content {
+    padding: 14px 16px 18px;
+  }
+
+  .runtime-components,
+  .candidate-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

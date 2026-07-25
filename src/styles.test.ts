@@ -11,4 +11,13 @@ describe("desktop typography", () => {
 
     expect(undersized).toEqual([]);
   });
+
+  it("keeps the mobile workbench in page flow with only local horizontal scrolling", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
+
+    expect(css).toContain("@media (max-width: 900px)");
+    expect(css).toMatch(/\.app-shell\s*\{[\s\S]*?height:\s*auto;[\s\S]*?overflow:\s*visible;/);
+    expect(css).toMatch(/\.stage-grid,[\s\S]*?\.editor-grid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+    expect(css).toMatch(/\.timeline-track\s*\{\s*min-width:\s*720px;/);
+  });
 });

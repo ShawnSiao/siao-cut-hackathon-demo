@@ -29,6 +29,18 @@ GitHub Pages 无法调用 Windows 本机的 Rust Core、FFmpeg、ASR、文件选
 
 真实媒体处理能力位于 SiaoCut Windows 桌面版，不包含在本赛事仓库中。
 
+## 移动端展示
+
+桌面视口继续使用与 SiaoCut 桌面端相同的工作台布局。视口宽度不超过 `900px` 时，页面切换为移动端展示：
+
+- 项目入口改为顶部横向列表；
+- 播放器、字幕编辑、审阅抽屉和时间线按单列排列；
+- 流程步骤、传输信息和时间线仅在各自区域内横向滚动；
+- 页面本身不产生横向溢出；
+- 主要按钮和选择器保留适合触摸操作的高度。
+
+移动端方案参考 [SiaoSee 赛事体验版](https://shawnsiao.github.io/siao-see-hackathon-demo/) 及其[公开实现](https://github.com/ShawnSiao/siao-see-hackathon-demo)，根据 SiaoCut 的项目列表、字幕工作台和审阅抽屉结构重新适配。
+
 ## 本地运行
 
 ```powershell

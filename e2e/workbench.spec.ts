@@ -86,6 +86,45 @@ test("keeps command groups non-overlapping in Chinese and English", async ({ pag
   }
 });
 
+test("reflows the full workbench into a mobile page without document overflow", async ({ page }) => {
+  for (const viewport of [
+    { width: 320, height: 568 },
+    { width: 375, height: 812 },
+    { width: 390, height: 844 },
+    { width: 844, height: 390 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "发布口播 · 草稿" })).toBeVisible();
+    expect(await page.evaluate(() => ({
+      viewport: window.innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      bodyWidth: document.body.scrollWidth,
+    }))).toEqual({
+      viewport: viewport.width,
+      documentWidth: viewport.width,
+      bodyWidth: viewport.width,
+    });
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  await expect(page.locator(".rail")).toHaveCSS("position", "relative");
+  await expect(page.locator(".stage-grid")).toHaveCSS("grid-template-columns", "366px");
+  await expect(page.locator(".editor-grid")).toHaveCSS("grid-template-columns", "366px");
+  await expect(page.locator(".video-frame")).toBeVisible();
+  await expect(page.locator(".transcript-panel")).toBeVisible();
+  await expect(page.locator(".creator-drawer")).toBeVisible();
+  await expect(page.locator(".timeline-panel")).toBeVisible();
+
+  const timeline = page.locator(".timeline-panel");
+  expect(await timeline.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+
+  await page.getByRole("tab", { name: "质量" }).click();
+  await expect(page.locator('.creator-drawer [role="tab"][aria-selected="true"]')).toHaveText(/质量/);
+});
+
 test("uses direct transcript keys for time-confirmed split and adjacent merge", async ({ page }) => {
   await page.goto("/");
   const editor = page.getByLabel("00:13 字幕文本");
