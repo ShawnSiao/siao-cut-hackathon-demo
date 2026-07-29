@@ -7,7 +7,7 @@ async function bindMockMedia(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("siaocut.productTour.v2", "complete"));
+  await page.addInitScript(() => localStorage.setItem("siaocut.productTour.v3", "complete"));
 });
 
 test("walks a newcomer through the real SiaoCut workflow on desktop and mobile", async ({ page }) => {
@@ -23,11 +23,31 @@ test("walks a newcomer through the real SiaoCut workflow on desktop and mobile",
     "先从一个项目开始",
     "画面、字幕和时间保持同步",
     "像改文档一样完成粗剪",
-    "AI 只提建议，修改由人确认",
   ]) {
     await expect(page.getByRole("dialog", { name: title })).toBeVisible();
-    if (title !== "AI 只提建议，修改由人确认") await page.getByRole("button", { name: "下一步" }).click();
+    if (title !== "像改文档一样完成粗剪") await page.getByRole("button", { name: "下一步" }).click();
   }
+
+  for (const highlight of [
+    {
+      title: "重做字幕，也不会冒险覆盖",
+      action: "体验安全重生成",
+      complete: "校验通过；示例字幕未替换，安全流程已完整展示。",
+    },
+    {
+      title: "编辑时间，也能一眼看清审校证据",
+      action: "切换高级审校",
+      complete: "高级审校已打开；可继续点击下方标记定位详情。",
+    },
+  ]) {
+    await page.getByRole("button", { name: "下一步" }).click();
+    await expect(page.getByRole("dialog", { name: highlight.title })).toBeVisible();
+    await page.getByRole("button", { name: highlight.action }).click();
+    await expect(page.getByText(highlight.complete)).toBeVisible();
+  }
+
+  await page.getByRole("button", { name: "下一步" }).click();
+  await expect(page.getByRole("dialog", { name: "AI 只提建议，修改由人确认" })).toBeVisible();
 
   for (const highlight of [
     {
@@ -77,9 +97,15 @@ test("walks a newcomer through the real SiaoCut workflow on desktop and mobile",
   expect(mobileCard!.x + mobileCard!.width).toBeLessThanOrEqual(390);
   expect(mobileCard!.y).toBeGreaterThanOrEqual(0);
   expect(mobileCard!.y + mobileCard!.height).toBeLessThanOrEqual(844);
-  for (let step = 0; step < 4; step += 1) {
+  for (let step = 0; step < 5; step += 1) {
     await page.getByRole("button", { name: "下一步" }).click();
+    const action = page.locator(".product-tour-hotspot");
+    if (await action.count()) {
+      await action.click();
+      await expect(page.getByRole("button", { name: "下一步" })).toBeEnabled();
+    }
   }
+  await page.getByRole("button", { name: "下一步" }).click();
   const mobileAgentCard = await page.getByRole("dialog", { name: "把文稿交给本机 Codex" }).boundingBox();
   const mobileAgentHotspot = await page.getByRole("button", { name: "体验本机 Codex" }).boundingBox();
   expect(mobileAgentCard).not.toBeNull();
@@ -100,6 +126,66 @@ test("walks a newcomer through the real SiaoCut workflow on desktop and mobile",
     bodyWidth: document.body.scrollWidth,
   }))).toEqual({ viewport: 390, documentWidth: 390, bodyWidth: 390 });
   await page.getByRole("button", { name: "关闭引导" }).click();
+});
+
+test("keeps every interactive tour highlight reachable and clear of its card on compact browsers", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  for (const viewport of [
+    { width: 320, height: 568 },
+    { width: 390, height: 844 },
+    { width: 844, height: 390 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/");
+    await page.getByRole("button", { name: "使用引导" }).click();
+    await page.getByRole("button", { name: "开始体验" }).click();
+    await page.getByRole("button", { name: "下一步" }).click();
+    await page.getByRole("button", { name: "下一步" }).click();
+
+    const highlights = [
+      { action: "体验安全重生成", complete: "校验通过；示例字幕未替换，安全流程已完整展示。" },
+      { action: "切换高级审校", complete: "高级审校已打开；可继续点击下方标记定位详情。" },
+      { action: "体验本机 Codex", complete: "建议已进入待审区，项目内容仍保持原样。" },
+      { action: "体验手工交接", complete: "交接说明已生成；任务仍等待明确领取。" },
+      { action: "体验应用建议", complete: "已展示应用结果；示例项目没有被修改。" },
+    ];
+
+    for (const [index, highlight] of highlights.entries()) {
+      await page.getByRole("button", { name: "下一步" }).click();
+      if (index === 2) {
+        await page.getByRole("button", { name: "下一步" }).click();
+      }
+      const card = page.locator(".product-tour-card");
+      const hotspot = page.getByRole("button", { name: highlight.action });
+      await expect(hotspot).toBeVisible();
+      const geometry = await Promise.all([card.boundingBox(), hotspot.boundingBox()]);
+      expect(geometry[0]).not.toBeNull();
+      expect(geometry[1]).not.toBeNull();
+      const [cardBox, hotspotBox] = geometry as [
+        { x: number; y: number; width: number; height: number },
+        { x: number; y: number; width: number; height: number },
+      ];
+      const overlaps = !(
+        hotspotBox.x + hotspotBox.width <= cardBox.x
+        || hotspotBox.x >= cardBox.x + cardBox.width
+        || hotspotBox.y + hotspotBox.height <= cardBox.y
+        || hotspotBox.y >= cardBox.y + cardBox.height
+      );
+      expect(overlaps, JSON.stringify({ viewport, action: highlight.action, cardBox, hotspotBox })).toBe(false);
+      expect(hotspotBox.x).toBeGreaterThanOrEqual(0);
+      expect(hotspotBox.y).toBeGreaterThanOrEqual(0);
+      expect(hotspotBox.x + hotspotBox.width).toBeLessThanOrEqual(viewport.width + 1);
+      expect(hotspotBox.y + hotspotBox.height).toBeLessThanOrEqual(viewport.height + 1);
+      expect(await hotspot.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return hit === element || Boolean(hit?.closest(".product-tour-hotspot"));
+      })).toBe(true);
+      await hotspot.click();
+      await expect(page.getByText(highlight.complete)).toBeVisible();
+    }
+    await page.getByRole("button", { name: "关闭引导" }).click();
+  }
 });
 
 test("switches the application chrome to English without reloading the project", async ({ page }) => {
@@ -214,11 +300,43 @@ test("reflows the full workbench into a mobile page without document overflow", 
   await expect(page.locator(".creator-drawer")).toBeVisible();
   await expect(page.locator(".timeline-panel")).toBeVisible();
 
-  const timeline = page.locator(".timeline-panel");
+  const timeline = page.locator(".subtitle-timeline-scroll");
   expect(await timeline.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
 
   await page.getByRole("tab", { name: "质量" }).click();
   await expect(page.locator('.creator-drawer [role="tab"][aria-selected="true"]')).toHaveText(/质量/);
+});
+
+test("preflights and confirms original-timeline quick subtitle regeneration", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "更多命令" }).click();
+  await page.getByRole("menuitem", { name: "重新生成快速字幕" }).click();
+  const dialog = page.getByRole("dialog", { name: "确认重新生成快速字幕" });
+  await expect(dialog.getByText(/原片、既有导出文件和历史版本不会修改/)).toBeVisible();
+  const confirm = dialog.getByRole("button", { name: "确认并重新转写" });
+  await expect(confirm).toBeDisabled();
+  await dialog.getByRole("checkbox", { name: /确认替换当前字幕/ }).check();
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText(/快速字幕已重新生成并通过时间校验/)).toBeVisible();
+});
+
+test("edits timing and reveals review evidence on the dual-mode timeline", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  const timeline = page.getByRole("region", { name: "字幕时间轴" });
+  await expect(timeline.getByRole("button", { name: "精细编辑" })).toHaveAttribute("aria-pressed", "true");
+  await expect(timeline.getByRole("slider", { name: "缩放比例" })).toHaveValue("160");
+  await timeline.getByRole("button", { name: /字幕 2，/ }).click();
+  await timeline.getByRole("button", { name: "后移 0.1 秒" }).click();
+  await expect(page.getByText(/字幕已后移 0.1 秒/)).toBeVisible();
+  await expect(timeline.getByText("00:13.3 — 00:18.7")).toBeVisible();
+
+  await timeline.getByRole("button", { name: /高级审校/ }).click();
+  await expect(timeline).toHaveClass(/review/);
+  await expect(timeline.getByText("说话人", { exact: true })).toBeVisible();
+  await expect(timeline.locator(".subtitle-timeline-review-markers button").first()).toBeVisible();
 });
 
 test("uses direct transcript keys for time-confirmed split and adjacent merge", async ({ page }) => {
@@ -583,8 +701,7 @@ test("reviews and edits a transcript from the workbench", async ({ page }) => {
   await page.getByRole("button", { name: "应用软剪辑" }).click();
   await expect(page.getByText("已应用软剪辑；预览时间线已更新，原片未修改。")).toBeVisible();
   await expect(page.getByText("成片 04:37 · 原片 04:38")).toBeVisible();
-  await page.getByRole("button", { name: "展开时间线" }).click();
-  await page.getByText("恢复此处").click();
+  await page.getByRole("button", { name: "恢复剪辑" }).click();
   await expect(page.getByText("已恢复此处；预览时间线已更新。")).toBeVisible();
   await page.getByRole("tab", { name: "分析" }).click();
   const wordEvidence = page.getByRole("region", { name: "词级时间" });

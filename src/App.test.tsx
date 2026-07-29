@@ -14,6 +14,7 @@ afterEach(() => {
   localStorage.removeItem("siaocut.exportPreferences.v1");
   localStorage.removeItem(TRANSCRIPTION_LANGUAGE_STORAGE_KEY);
   localStorage.removeItem("siaocut.transcriptionMode");
+  localStorage.removeItem("siaocut.timelinePreferences.v1");
   localStorage.removeItem(PRODUCT_TOUR_STORAGE_KEY);
   vi.unstubAllGlobals();
   vi.useRealTimers();
@@ -48,11 +49,33 @@ describe("SiaoCut review workbench", () => {
     for (const title of [
       "画面、字幕和时间保持同步",
       "像改文档一样完成粗剪",
-      "AI 只提建议，修改由人确认",
     ]) {
       fireEvent.click(screen.getByRole("button", { name: "下一步" }));
       expect(screen.getByRole("dialog", { name: title })).toBeInTheDocument();
     }
+
+    for (const highlight of [
+      {
+        title: "重做字幕，也不会冒险覆盖",
+        action: "体验安全重生成",
+        complete: "校验通过；示例字幕未替换，安全流程已完整展示。",
+      },
+      {
+        title: "编辑时间，也能一眼看清审校证据",
+        action: "切换高级审校",
+        complete: "高级审校已打开；可继续点击下方标记定位详情。",
+      },
+    ]) {
+      fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+      expect(screen.getByRole("dialog", { name: highlight.title })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "点击高亮按钮" })).toBeDisabled();
+      fireEvent.click(await screen.findByRole("button", { name: highlight.action }));
+      await waitFor(() => expect(screen.getByText(highlight.complete)).toBeInTheDocument(), { timeout: 2_500 });
+      expect(screen.getByRole("button", { name: "下一步" })).toBeEnabled();
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    expect(screen.getByRole("dialog", { name: "AI 只提建议，修改由人确认" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /^审阅/ })).toHaveAttribute("aria-selected", "true");
 
     for (const highlight of [
@@ -99,6 +122,35 @@ describe("SiaoCut review workbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "使用引导" }));
     expect(screen.getByRole("dialog", { name: "用 1 分钟走完一条作品" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "关闭引导" }));
+  });
+
+  it("preflights and explicitly confirms safe quick subtitle regeneration in the demo", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "更多命令" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "重新生成快速字幕" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "确认重新生成快速字幕" });
+    expect(within(dialog).getByText(/赛事版会完整演示安全流程/)).toBeInTheDocument();
+    const confirm = within(dialog).getByRole("button", { name: "确认并重新转写" });
+    expect(confirm).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /确认替换当前字幕/ }));
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "确认重新生成快速字幕" })).not.toBeInTheDocument());
+    expect(screen.getByText(/快速字幕已重新生成并通过时间校验/)).toBeInTheDocument();
+  });
+
+  it("switches the real timeline between precision editing and advanced review", async () => {
+    render(<App />);
+    const timeline = await screen.findByRole("region", { name: "字幕时间轴" });
+    expect(within(timeline).getByRole("button", { name: "精细编辑" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(timeline).getByRole("slider", { name: "缩放比例" })).toHaveValue("160");
+
+    fireEvent.click(within(timeline).getByRole("button", { name: /高级审校/ }));
+    expect(timeline).toHaveClass("review");
+    expect(within(timeline).getByText("说话人", { exact: true })).toBeInTheDocument();
+    expect(within(timeline).getByText("审校证据", { exact: true })).toBeInTheDocument();
   });
 
   it("falls back to source media when a stale canvas preview cannot be authorized", async () => {

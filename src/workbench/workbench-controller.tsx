@@ -2,7 +2,7 @@ import { changeUiLocale, getUiLocale, tr, type UiLocale } from "../i18n";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type SyntheticEvent } from "react";
 import { Activity, Bot, Check, ChevronDown, ChevronRight, ChevronUp, CircleAlert, Clock3, Copy, Cpu, Database, Download, FileVideo2, FileText, Film, FolderOpen, FolderPlus, HardDrive, History, Link2, LoaderCircle, Play, RefreshCw, RotateCcw, Search, Scissors, Settings2, ShieldCheck, Sparkles, Trash2, Undo2, Redo2, Headphones, ListChecks, MoreHorizontal, MoveHorizontal, Users, X, } from "lucide-react";
 import { authorizeArtifact, authorizeMedia, openLogDirectory, pickMedia, pickModel, pickSubtitleFile, pickTranscriptPath, pickVideoPath, runtimeInfo, selectAsrBackend, updaterPolicy } from "../core";
-import type { AgentRun, AudioAnalysisJob, AudioRisk, AutoWorkflow, CanvasSettings, CodexHealth, CutPreview, ExportJob, ModelDownloadJob, ModelStatus, Project, ProjectDeletionPreflight, RuntimeInfo, Segment, SourceImportJob, SourcePreview, SpeakerIdentity, SpeakerJob, SpeakerPackageStatus, SpeakerTrack, SpeechEvidence, SpeechInsights, SpeechPause, SubtitleImportPreview, SubtitleQualityIssue, TranscriptionJob, TranscriptionLanguage, TranscriptionProviderConfig, TranscriptionProviderHealth, TranscriptionReviewItem } from "../types";
+import type { AgentRun, AudioAnalysisJob, AudioRisk, AutoWorkflow, CanvasSettings, CodexHealth, CutPreview, ExportJob, ModelDownloadJob, ModelStatus, Project, ProjectDeletionPreflight, RuntimeInfo, Segment, SourceImportJob, SourcePreview, SpeakerIdentity, SpeakerJob, SpeakerPackageStatus, SpeakerTrack, SpeechEvidence, SpeechInsights, SpeechPause, SubtitleImportPreview, SubtitleQualityIssue, TranscriptReplacementPreflight, TranscriptionJob, TranscriptionLanguage, TranscriptionProviderConfig, TranscriptionProviderHealth, TranscriptionReviewItem } from "../types";
 import { Button, Dialog, IconButton, StatusBadge } from "../components/ui";
 import { ProductTour } from "../components/product-tour";
 import { JobFailureDetails } from "../components/job-failure";
@@ -19,6 +19,7 @@ import { transcriptEditingClient } from "../domains/transcript-editing-client";
 import { translationClient } from "../domains/translation-client";
 import { useBackgroundTaskRegistry } from "../hooks/use-background-task-registry";
 import { useWorkbenchFeedback } from "../hooks/use-workbench-feedback";
+import { SubtitleTimelinePanel, type TimelineReviewMarker } from "./subtitle-timeline-panel";
 
 export async function resolveCanvasMedia(
     projectId: string,
@@ -100,6 +101,7 @@ const ExportPanel = lazy(() => import("../components/export-panel"));
 const TranscriptionJobBar = lazy(() => import("../components/transcription-job-bar"));
 const ProjectDeleteDialog = lazy(() => import("../components/project-delete-dialog"));
 const AppCommandMenu = lazy(() => import("../components/app-command-menu"));
+const QuickRetranscriptionDialog = lazy(() => import("../components/quick-retranscription-dialog"));
 
 function WorkbenchController() {
     const [uiLocale, setUiLocale] = useState<UiLocale>(() => getUiLocale());
@@ -177,7 +179,6 @@ function WorkbenchController() {
     const [showExportPanel, setShowExportPanel] = useState(false);
     const [drawerTab, setDrawerTab] = useState<"review" | "quality" | "analysis" | "history" | "export">("review");
     const [playerExpanded, setPlayerExpanded] = useState(true);
-    const [timelineExpanded, setTimelineExpanded] = useState(false);
     const [showSubtitleSafeArea, setShowSubtitleSafeArea] = useState(true);
     const [showMoreMenu, setShowMoreMenu] = useState(false);
     const [search, setSearch] = useState("");
@@ -190,6 +191,11 @@ function WorkbenchController() {
     const [subtitleImportBusy, setSubtitleImportBusy] = useState<string | null>(null);
     const [subtitleImportError, setSubtitleImportError] = useState<string | null>(null);
     const [subtitleReplaceConfirmed, setSubtitleReplaceConfirmed] = useState(false);
+    const [showQuickRetranscription, setShowQuickRetranscription] = useState(false);
+    const [quickRetranscriptionPreflight, setQuickRetranscriptionPreflight] = useState<TranscriptReplacementPreflight | null>(null);
+    const [quickRetranscriptionChecking, setQuickRetranscriptionChecking] = useState(false);
+    const [quickRetranscriptionConfirmed, setQuickRetranscriptionConfirmed] = useState(false);
+    const [quickRetranscriptionError, setQuickRetranscriptionError] = useState<string | null>(null);
     const [structureEditMode, setStructureEditMode] = useState<StructureEditMode | null>(null);
     const [structureStart, setStructureStart] = useState("");
     const [structureEnd, setStructureEnd] = useState("");
@@ -230,6 +236,7 @@ function WorkbenchController() {
     const replacementInputRef = useRef<HTMLInputElement>(null);
     const subtitleImportButtonRef = useRef<HTMLButtonElement>(null);
     const handleProductTourStepChange = useCallback((step: string) => {
+        setShowMoreMenu(step === "quickRetranscribe");
         if (step === "player")
             setPlayerExpanded(true);
         if (step === "review" || step === "agent" || step === "handoff" || step === "apply") {
@@ -750,6 +757,13 @@ function WorkbenchController() {
             transcription: blocker.status === "awaiting_apply" ? tr("app.delete.blocker.transcriptionCandidate") : tr("app.delete.blocker.transcription"),
         }[blocker.kind] ?? tr("app.delete.blocker.unknown", { kind: blocker.kind, status: blocker.status }))).join(" ")
         : null;
+    const quickRetranscriptionBlockMessage = quickRetranscriptionPreflight && !quickRetranscriptionPreflight.canReplace
+        ? tr("app.quickRetranscribe.blocked", {
+            edits: quickRetranscriptionPreflight.blockers.edits,
+            patchItems: quickRetranscriptionPreflight.blockers.patchItems,
+            taskSegments: quickRetranscriptionPreflight.blockers.taskSegments,
+        })
+        : null;
     const humanState = busy ? tr("app.s0001") : taskLabel(project);
     const humanStateTone = humanState === tr("app.s0003") ? "warning" : humanState === tr("app.s0002") ? "agent" : humanState === tr("app.s0001") ? "info" : "success";
     const orderedPatchSets = project?.patchSets
@@ -1177,10 +1191,72 @@ function WorkbenchController() {
             throw new Error(tr("app.s0122"));
         if (!modelPath)
             throw new Error(tr("app.s0123"));
-        const result = await transcriptEditingClient.quickTranscribe(project.id, modelPath, transcriptionLanguage);
+        const expectedVersionId = project.history.currentVersionId ?? project.versions.at(-1)?.id ?? "v-demo";
+        const result = await transcriptEditingClient.quickTranscribe(project.id, modelPath, transcriptionLanguage, expectedVersionId);
         await refreshProject(project.id);
         setNotice(Number(result.segments ?? 0) === 0 ? tr("app.s0124") : tr("app.s0125"));
     });
+    const openQuickRetranscription = async () => {
+        if (!project || quickRetranscriptionChecking)
+            return;
+        setShowQuickRetranscription(true);
+        setQuickRetranscriptionPreflight(null);
+        setQuickRetranscriptionConfirmed(false);
+        setQuickRetranscriptionError(null);
+        setQuickRetranscriptionChecking(true);
+        try {
+            const envelope = await transcriptEditingClient.transcriptReplacementPreflight(project.id);
+            if (!envelope.transcriptReplacementPreflight)
+                throw new Error(tr("app.quickRetranscribe.preflightMissing"));
+            setQuickRetranscriptionPreflight(envelope.transcriptReplacementPreflight);
+        }
+        catch (cause) {
+            setQuickRetranscriptionError(cause instanceof Error ? cause.message : String(cause));
+        }
+        finally {
+            setQuickRetranscriptionChecking(false);
+        }
+    };
+    const closeQuickRetranscription = () => {
+        if (busy)
+            return;
+        setShowQuickRetranscription(false);
+        setQuickRetranscriptionPreflight(null);
+        setQuickRetranscriptionConfirmed(false);
+        setQuickRetranscriptionError(null);
+    };
+    const confirmQuickRetranscription = async () => {
+        if (!project || !quickRetranscriptionPreflight?.canReplace || !quickRetranscriptionConfirmed || busy)
+            return;
+        setBusy(tr("app.quickRetranscribe.running"));
+        setError(null);
+        setQuickRetranscriptionError(null);
+        try {
+            const result = await transcriptEditingClient.quickTranscribe(
+                project.id,
+                modelPath ?? "demo-model.bin",
+                transcriptionLanguage,
+                quickRetranscriptionPreflight.currentVersionId,
+                true,
+            );
+            if (result.timingValidation?.status !== "verified"
+                || result.timingValidation.timeDomain !== "original_media"
+                || result.timingValidation.vadUsed) {
+                throw new Error(tr("app.quickRetranscribe.validationMissing"));
+            }
+            await refreshProject(project.id);
+            setShowQuickRetranscription(false);
+            setQuickRetranscriptionPreflight(null);
+            setQuickRetranscriptionConfirmed(false);
+            setNotice(tr("app.quickRetranscribe.completed", { count: result.timingValidation.segmentCount }));
+        }
+        catch (cause) {
+            setQuickRetranscriptionError(cause instanceof Error ? cause.message : String(cause));
+        }
+        finally {
+            setBusy(null);
+        }
+    };
     const saveTranscriptionProvider = (endpoint: string, modelId: string) => withBusy(tr("app.moss.settings.saving"), async () => {
         const envelope = await backgroundTaskClient.configureTranscription(endpoint, modelId);
         if (!envelope.config)
@@ -1728,7 +1804,7 @@ function WorkbenchController() {
             const target = event.target;
             const modifier = event.ctrlKey || event.metaKey;
             const key = event.key.toLowerCase();
-            const dialogOpen = showRuntime || showSourceImport || showAutoWorkflow || showSubtitleImport || showAgentHandoff || Boolean(structureEditMode) || Boolean(currentDeleteCandidate);
+            const dialogOpen = showRuntime || showSourceImport || showAutoWorkflow || showSubtitleImport || showQuickRetranscription || showAgentHandoff || Boolean(structureEditMode) || Boolean(currentDeleteCandidate);
             const editingTarget = target instanceof HTMLElement && (target.isContentEditable || target.matches("input, textarea, select"));
             if (event.key === "Escape" && showMoreMenu) {
                 event.preventDefault();
@@ -1806,7 +1882,7 @@ function WorkbenchController() {
         };
         window.addEventListener("keydown", handleShortcut);
         return () => window.removeEventListener("keydown", handleShortcut);
-    }, [busy, currentDeleteCandidate, mergeCandidatesAdjacent, project, selectedSegmentIds, showAutoWorkflow, showMoreMenu, showRuntime, showSourceImport, showSubtitleImport, structureEditMode]);
+    }, [busy, currentDeleteCandidate, mergeCandidatesAdjacent, project, selectedSegmentIds, showAutoWorkflow, showMoreMenu, showQuickRetranscription, showRuntime, showSourceImport, showSubtitleImport, structureEditMode]);
     const chooseModel = () => withBusy(tr("app.s0214"), async () => {
         const path = await pickModel();
         if (!path)
@@ -1999,6 +2075,59 @@ function WorkbenchController() {
         setDrawerTab(tab);
         setShowExportPanel(tab === "export");
     };
+    const seekTimeline = (time: number) => {
+        const duration = playback.duration || project?.media.durationSeconds || project?.timeline.sourceDuration || 0;
+        const nextTime = Math.max(0, Math.min(duration, Number.isFinite(time) ? time : 0));
+        if (videoRef.current)
+            videoRef.current.currentTime = nextTime;
+        setPlayback((current) => ({ ...current, currentTime: nextTime }));
+    };
+    const toggleTimelinePlayback = () => {
+        const video = videoRef.current;
+        if (!video) {
+            setPlayback((current) => ({ ...current, playing: !current.playing }));
+            return;
+        }
+        if (video.paused)
+            void video.play();
+        else
+            video.pause();
+    };
+    const nudgeTimelineSegment = async (segmentId: string, delta: number) => {
+        if (!project || structureBusy || busy)
+            return;
+        setStructureBusy(true);
+        setError(null);
+        try {
+            const envelope = await transcriptEditingClient.offsetSegments(project.id, [segmentId], delta);
+            if (!envelope.structureEdit?.project)
+                throw new Error(tr("app.s0162"));
+            const nextProject = envelope.structureEdit.project;
+            setProject(nextProject);
+            setProjects((current) => current.map((item) => item.id === nextProject.id ? nextProject : item));
+            setSelectedId(segmentId);
+            setSelectedSegmentIds([segmentId]);
+            setSelectionAnchorId(segmentId);
+            setNotice(tr("app.timeline.nudgeCompleted", {
+                direction: delta < 0 ? tr("app.timeline.directionEarlier") : tr("app.timeline.directionLater"),
+                amount: Math.abs(delta).toFixed(1),
+            }));
+        }
+        catch (cause) {
+            setError(cause instanceof Error ? cause.message : String(cause));
+        }
+        finally {
+            setStructureBusy(false);
+        }
+    };
+    const openTimelineReviewDetail = (marker: TimelineReviewMarker) => {
+        const segment = project?.transcript.segments.find((candidate) => candidate.id === marker.segmentId);
+        if (segment)
+            selectSegment(segment);
+        if (marker.detailTarget === "quality")
+            setQualityFilter("all");
+        openCreatorDrawer(marker.detailTarget);
+    };
     const agentRunActive = Boolean(agentRun && ["queued", "running", "submitting"].includes(agentRun.status));
     const creatorPhase = !project ? "prepare"
         : !capabilities.hasTranscript || transcriptionActive ? "transcribe"
@@ -2065,7 +2194,7 @@ function WorkbenchController() {
 	            </div>
 	            <Button variant="primary" className="creator-primary-action" disabled={Boolean(busy) || (creatorPhase === "transcribe" && (!canStartTranscription || transcriptionActive))} title={creatorPhase === "transcribe" ? transcribeCapabilityTitle : undefined} onClick={runCreatorPrimaryAction}>{creatorPhase === "review" ? <ListChecks size={15}/> : creatorPhase === "export" ? <Download size={15}/> : <Sparkles size={15}/>} {creatorPrimaryLabel}</Button>
 	            <ProductTour onStepChange={handleProductTourStepChange}/>
-	            <div className="command-more" ref={commandMoreRef}><IconButton label={tr("app.s0256")} onClick={() => setShowMoreMenu((current) => !current)}><MoreHorizontal size={17}/></IconButton>{showMoreMenu && <Suspense fallback={null}><AppCommandMenu canDetectSuggestions={Boolean(project?.transcript.words.length) && !busy} canPreparePreview={capabilities.canPreparePreview && !busy} canRelinkMedia={capabilities.canRelinkMedia && !busy} mediaCapabilityTitle={mediaCapabilityTitle} onDetectSuggestions={() => { setShowMoreMenu(false); void detectSuggestions(); }} onPreparePreview={() => { setShowMoreMenu(false); void preparePreview(); }} onRelinkMedia={() => { setShowMoreMenu(false); void relinkMedia(); }}/></Suspense>}</div>
+	            <div className="command-more" ref={commandMoreRef}><IconButton label={tr("app.s0256")} data-tour="quick-retranscribe" onClick={() => setShowMoreMenu((current) => !current)}><MoreHorizontal size={17}/></IconButton>{showMoreMenu && <Suspense fallback={null}><AppCommandMenu canDetectSuggestions={Boolean(project?.transcript.words.length) && !busy} canPreparePreview={capabilities.canPreparePreview && !busy} canRelinkMedia={capabilities.canRelinkMedia && !busy} canRetranscribe={Boolean(project?.transcript.segments.length) && !busy} mediaCapabilityTitle={mediaCapabilityTitle} onDetectSuggestions={() => { setShowMoreMenu(false); void detectSuggestions(); }} onPreparePreview={() => { setShowMoreMenu(false); void preparePreview(); }} onRelinkMedia={() => { setShowMoreMenu(false); void relinkMedia(); }} onRetranscribe={() => { setShowMoreMenu(false); void openQuickRetranscription(); }}/></Suspense>}</div>
 	          </div>
 	        </header>
 	        <nav className="creator-flow" aria-label={tr("app.creator.flow.label")}>{creatorSteps.map((step, index) => <span key={step} className={index < creatorStepIndex ? "done" : index === creatorStepIndex ? "active" : "pending"}><i>{index < creatorStepIndex ? <Check size={12}/> : index + 1}</i>{tr(`app.creator.step.${step}`)}</span>)}</nav>
@@ -2202,11 +2331,23 @@ function WorkbenchController() {
 	              </aside>
 	            </section>
 
-            <section className={`timeline-panel ${timelineExpanded ? "expanded" : "collapsed"}`}>
-              <div className="section-title"><div><p className="eyebrow">{tr("app.s0387")}</p><h2>{tr("app.s0388")}</h2></div><button className="timeline-toggle" aria-expanded={timelineExpanded} onClick={() => setTimelineExpanded((current) => !current)}>{timelineExpanded ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}{timelineExpanded ? tr("app.creator.timeline.collapse") : tr("app.creator.timeline.expand")}</button></div>
-              {timelineExpanded && <>{waveformUrl && <img className="waveform" src={waveformUrl} alt={tr("app.s0390")}/>}
-              <div className="timeline-track">{project.transcript.segments.map((segment) => { const edit = project.edits.find((candidate) => candidate.segmentId === segment.id && ["suggested", "proposed", "applied"].includes(candidate.status)); const association = associationBySegment.get(segment.id); const speaker = association ? speakerById.get(association.speakerId) : undefined; return <div className="timeline-segment-shell" key={segment.id} style={{ flexGrow: Math.max(1, segment.end - segment.start) }}><button className={`timeline-segment ${edit && ["suggested", "proposed"].includes(edit.status) ? "suggested" : ""} ${edit?.status === "applied" ? "applied" : ""} ${selectedSegmentIds.includes(segment.id) ? "selected" : ""} ${selectedId === segment.id ? "active" : ""}`} onClick={() => selectSegment(segment)} title={`${speaker ? `${speaker.label} · ` : ""}${segment.text}`}>{speaker && <i className={`speaker-color speaker-${speaker.colorIndex % 6}`}/>}{segment.text}</button>{edit?.status === "applied" && <button className="timeline-restore" onClick={() => void updateCut(edit.id, "restore")}><Scissors size={11}/>{tr("app.s0391")}</button>}</div>; })}</div></>}
-            </section>
+            <SubtitleTimelinePanel
+              project={project}
+              speakerTrack={speakerTrack}
+              transcriptionReviews={transcriptionReviews}
+              waveformUrl={waveformUrl}
+              playback={playback}
+              selectedId={selectedId}
+              selectedSegmentIds={selectedSegmentIds}
+              busy={Boolean(busy || structureBusy)}
+              onSelectSegment={selectSegment}
+              onSeek={seekTimeline}
+              onTogglePlayback={toggleTimelinePlayback}
+              onNudgeSelected={(segmentId, delta) => void nudgeTimelineSegment(segmentId, delta)}
+              onOpenTiming={(segment) => openStructureEdit("timing", segment)}
+              onOpenReviewDetail={openTimelineReviewDetail}
+              onRestoreCut={(editId) => void updateCut(editId, "restore")}
+            />
           </>)}
       </section>
       {showAgentHandoff && project && <Dialog label={tr("app.agent.handoff.title")} className="runtime-dialog agent-handoff-dialog" onClose={() => setShowAgentHandoff(false)} returnFocusRef={agentButtonRef}>
@@ -2224,6 +2365,17 @@ function WorkbenchController() {
           <div className="confirm-actions"><button className="button quiet" onClick={() => setShowAgentHandoff(false)}>{tr("app.agent.handoff.later")}</button><button className="button agent" disabled={!handoffText} onClick={() => void copyAgentHandoff()}><Copy size={14}/>{agentHandoffCopied ? tr("app.agent.handoff.copied") : tr("app.agent.handoff.copy")}</button></div>
         </>}
       </Dialog>}
+      {showQuickRetranscription && <Suspense fallback={null}><QuickRetranscriptionDialog
+        preflight={quickRetranscriptionPreflight}
+        checking={quickRetranscriptionChecking}
+        busy={Boolean(busy)}
+        confirmed={quickRetranscriptionConfirmed}
+        blockerMessage={quickRetranscriptionBlockMessage}
+        error={quickRetranscriptionError}
+        onConfirmedChange={setQuickRetranscriptionConfirmed}
+        onConfirm={() => void confirmQuickRetranscription()}
+        onClose={closeQuickRetranscription}
+      /></Suspense>}
       {structureEditMode && project && <Dialog label={structureEditLabel(structureEditMode)} className="runtime-dialog subtitle-structure-dialog" onClose={() => { if (!structureBusy)
             setStructureEditMode(null); }}>
         <button autoFocus className="dialog-close" aria-label={tr("app.s0433", { "0": structureEditLabel(structureEditMode) })} title={tr("app.s0434")} disabled={structureBusy} onClick={() => setStructureEditMode(null)}><X size={18}/></button>
