@@ -6,6 +6,55 @@ async function bindMockMedia(page: Page) {
   await expect(page.getByText("已重新定位原片；内容哈希与项目记录一致。")).toBeVisible();
 }
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("siaocut.productTour.v1", "complete"));
+});
+
+test("walks a newcomer through the real SiaoCut workflow on desktop and mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "使用引导" }).click();
+  const tour = page.getByRole("dialog", { name: "用 1 分钟走完一条作品" });
+  await expect(tour).toContainText("不读取或上传访问者媒体");
+  await tour.getByRole("button", { name: "开始体验" }).click();
+
+  for (const title of [
+    "先从一个项目开始",
+    "画面、字幕和时间保持同步",
+    "像改文档一样完成粗剪",
+    "AI 只提建议，修改由人确认",
+    "导出前先处理明确问题",
+    "确认字幕、画布，再生成结果",
+    "已经掌握 SiaoCut 主流程",
+  ]) {
+    await expect(page.getByRole("dialog", { name: title })).toBeVisible();
+    if (title !== "已经掌握 SiaoCut 主流程") {
+      await page.getByRole("button", { name: "下一步" }).click();
+    }
+  }
+
+  await expect(page.getByRole("tab", { name: "导出" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: "导出设置" })).toBeVisible();
+  await page.getByRole("button", { name: "开始自由体验" }).click();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "使用引导" }).click();
+  await page.getByRole("button", { name: "开始体验" }).click();
+  const mobileCard = await page.getByRole("dialog", { name: "先从一个项目开始" }).boundingBox();
+  expect(mobileCard).not.toBeNull();
+  expect(mobileCard!.x).toBeGreaterThanOrEqual(0);
+  expect(mobileCard!.x + mobileCard!.width).toBeLessThanOrEqual(390);
+  expect(mobileCard!.y).toBeGreaterThanOrEqual(0);
+  expect(mobileCard!.y + mobileCard!.height).toBeLessThanOrEqual(844);
+  expect(await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    documentWidth: document.documentElement.scrollWidth,
+    bodyWidth: document.body.scrollWidth,
+  }))).toEqual({ viewport: 390, documentWidth: 390, bodyWidth: 390 });
+  await page.getByRole("button", { name: "关闭引导" }).click();
+});
+
 test("switches the application chrome to English without reloading the project", async ({ page }) => {
   await page.goto("/");
   const projectHeading = page.getByRole("heading", { name: "发布口播 · 草稿" });

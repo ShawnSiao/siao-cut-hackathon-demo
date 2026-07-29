@@ -1,14 +1,20 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App, { PatchReviewCard, TRANSCRIPTION_LANGUAGE_STORAGE_KEY, clearTransientCoreError, getProjectCapabilities, isHttpsSourceUrl, parseExportPreferences, parseTranscriptionLanguage, resolveCanvasMedia, resolveCaptionKaraokeStyle, resolveCaptionSegment, resolveImportedProjectMedia, resolvePlaybackDuration, shouldCheckForUpdates, startSerialPolling, taskLabel } from "./App";
+import { PRODUCT_TOUR_STORAGE_KEY } from "./components/product-tour";
 import { sampleProject } from "./mock";
+
+beforeEach(() => {
+  localStorage.setItem(PRODUCT_TOUR_STORAGE_KEY, "complete");
+});
 
 afterEach(() => {
   cleanup();
   localStorage.removeItem("siaocut.exportPreferences.v1");
   localStorage.removeItem(TRANSCRIPTION_LANGUAGE_STORAGE_KEY);
   localStorage.removeItem("siaocut.transcriptionMode");
+  localStorage.removeItem(PRODUCT_TOUR_STORAGE_KEY);
   vi.useRealTimers();
 });
 
@@ -26,6 +32,48 @@ async function selectAdvancedTranscriptionMode(mode: "quick" | "multispeaker") {
 }
 
 describe("SiaoCut review workbench", () => {
+  it("guides a first-time visitor through the real review-to-export workflow and can reopen later", async () => {
+    localStorage.removeItem(PRODUCT_TOUR_STORAGE_KEY);
+    render(<App />);
+
+    const tour = await screen.findByRole("dialog", { name: "用 1 分钟走完一条作品" });
+    expect(tour).toHaveTextContent("不读取或上传访问者媒体");
+    await screen.findByRole("heading", { name: "发布口播 · 草稿" });
+
+    fireEvent.click(within(tour).getByRole("button", { name: "开始体验" }));
+    expect(screen.getByRole("dialog", { name: "先从一个项目开始" })).toBeInTheDocument();
+
+    for (const title of [
+      "画面、字幕和时间保持同步",
+      "像改文档一样完成粗剪",
+      "AI 只提建议，修改由人确认",
+    ]) {
+      fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+      expect(screen.getByRole("dialog", { name: title })).toBeInTheDocument();
+    }
+    expect(screen.getByRole("tab", { name: /^审阅/ })).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    expect(screen.getByRole("dialog", { name: "导出前先处理明确问题" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /^质量/ })).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    expect(screen.getByRole("dialog", { name: "确认字幕、画布，再生成结果" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "导出" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("heading", { name: "导出设置" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    expect(screen.getByRole("dialog", { name: "已经掌握 SiaoCut 主流程" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "开始自由体验" }));
+
+    expect(screen.queryByRole("dialog", { name: "已经掌握 SiaoCut 主流程" })).not.toBeInTheDocument();
+    expect(localStorage.getItem(PRODUCT_TOUR_STORAGE_KEY)).toBe("complete");
+
+    fireEvent.click(screen.getByRole("button", { name: "使用引导" }));
+    expect(screen.getByRole("dialog", { name: "用 1 分钟走完一条作品" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "关闭引导" }));
+  });
+
   it("falls back to source media when a stale canvas preview cannot be authorized", async () => {
     const result = await resolveCanvasMedia(
       "p-test",
