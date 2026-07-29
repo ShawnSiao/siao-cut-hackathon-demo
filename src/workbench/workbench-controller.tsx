@@ -4,6 +4,7 @@ import { Activity, Bot, Check, ChevronDown, ChevronRight, ChevronUp, CircleAlert
 import { authorizeArtifact, authorizeMedia, openLogDirectory, pickMedia, pickModel, pickSubtitleFile, pickTranscriptPath, pickVideoPath, runtimeInfo, selectAsrBackend, updaterPolicy } from "../core";
 import type { AgentRun, AudioAnalysisJob, AudioRisk, AutoWorkflow, CanvasSettings, CodexHealth, CutPreview, ExportJob, ModelDownloadJob, ModelStatus, Project, ProjectDeletionPreflight, RuntimeInfo, Segment, SourceImportJob, SourcePreview, SpeakerIdentity, SpeakerJob, SpeakerPackageStatus, SpeakerTrack, SpeechEvidence, SpeechInsights, SpeechPause, SubtitleImportPreview, SubtitleQualityIssue, TranscriptionJob, TranscriptionLanguage, TranscriptionProviderConfig, TranscriptionProviderHealth, TranscriptionReviewItem } from "../types";
 import { Button, Dialog, IconButton, StatusBadge } from "../components/ui";
+import { ProductTour } from "../components/product-tour";
 import { JobFailureDetails } from "../components/job-failure";
 import RuntimeSettingsDialog from "../components/runtime-settings-dialog";
 import { AudioQualityPanel, PatchReviewCard, RuntimeChecklist, SegmentRow, SpeakerTrackPanel, SpeechInsightsPanel, TranscriptionReviewPanel } from "../components/workbench-panels";
@@ -228,6 +229,22 @@ function WorkbenchController() {
     const searchInputRef = useRef<HTMLInputElement>(null);
     const replacementInputRef = useRef<HTMLInputElement>(null);
     const subtitleImportButtonRef = useRef<HTMLButtonElement>(null);
+    const handleProductTourStepChange = useCallback((step: string) => {
+        if (step === "player")
+            setPlayerExpanded(true);
+        if (step === "review") {
+            setDrawerTab("review");
+            setShowExportPanel(false);
+        }
+        if (step === "quality") {
+            setDrawerTab("quality");
+            setShowExportPanel(false);
+        }
+        if (step === "export") {
+            setDrawerTab("export");
+            setShowExportPanel(true);
+        }
+    }, []);
     const refreshLatestExport = useCallback(async (projectId: string) => {
         const envelope = await exportRuntimeClient.listVideoExports(projectId);
         setActiveExport(envelope.jobs?.[0] ?? null);
@@ -2018,7 +2035,7 @@ function WorkbenchController() {
         <div className="rail-heading">{tr("app.s0239")}</div>
         <nav aria-label={tr("app.s0240")}>
           {projects.map((item) => (<div className={`project-entry ${project?.id === item.id ? "active" : ""}`} key={item.id}>
-              <button className="project-link" onClick={() => switchProject(item.id)}>
+              <button className="project-link" data-tour={project?.id === item.id ? "project" : undefined} onClick={() => switchProject(item.id)}>
                 <span className="project-dot"/><span><strong>{item.title}</strong><small>{subtitleCountLabel(item.transcript.segments.length)}</small></span><ChevronRight size={14}/>
               </button>
               <button className="project-delete" aria-label={tr("app.s0242", { "0": item.title })} title={tr("app.s0243")} onClick={() => openDeleteDialog(item)}><Trash2 size={14}/></button>
@@ -2047,6 +2064,7 @@ function WorkbenchController() {
 	              <IconButton label={tr("app.s0252")} shortcut="Ctrl+Shift+Z" disabled={!project?.history.canRedo || Boolean(busy)} onClick={() => navigateHistory("redo")}><Redo2 size={15}/></IconButton>
 	            </div>
 	            <Button variant="primary" className="creator-primary-action" disabled={Boolean(busy) || (creatorPhase === "transcribe" && (!canStartTranscription || transcriptionActive))} title={creatorPhase === "transcribe" ? transcribeCapabilityTitle : undefined} onClick={runCreatorPrimaryAction}>{creatorPhase === "review" ? <ListChecks size={15}/> : creatorPhase === "export" ? <Download size={15}/> : <Sparkles size={15}/>} {creatorPrimaryLabel}</Button>
+	            <ProductTour onStepChange={handleProductTourStepChange}/>
 	            <div className="command-more" ref={commandMoreRef}><IconButton label={tr("app.s0256")} onClick={() => setShowMoreMenu((current) => !current)}><MoreHorizontal size={17}/></IconButton>{showMoreMenu && <Suspense fallback={null}><AppCommandMenu canDetectSuggestions={Boolean(project?.transcript.words.length) && !busy} canPreparePreview={capabilities.canPreparePreview && !busy} canRelinkMedia={capabilities.canRelinkMedia && !busy} mediaCapabilityTitle={mediaCapabilityTitle} onDetectSuggestions={() => { setShowMoreMenu(false); void detectSuggestions(); }} onPreparePreview={() => { setShowMoreMenu(false); void preparePreview(); }} onRelinkMedia={() => { setShowMoreMenu(false); void relinkMedia(); }}/></Suspense>}</div>
 	          </div>
 	        </header>
@@ -2082,7 +2100,7 @@ function WorkbenchController() {
           </section>) : (<>
 	            <section className="stage-grid">
 	              <article className={`video-panel creator-player ${playerExpanded ? "expanded" : "collapsed"}`}>
-	                <header className="creator-player-header"><span><Play size={14}/><strong>{tr("app.creator.player.title")}</strong><small>{selected ? `${formatTime(selected.start)} — ${formatTime(selected.end)}` : tr("app.s0288")}</small></span><button aria-expanded={playerExpanded} onClick={() => setPlayerExpanded((current) => !current)}>{playerExpanded ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}{playerExpanded ? tr("app.creator.player.collapse") : tr("app.creator.player.expand")}</button></header>
+	                <header className="creator-player-header" data-tour="player"><span><Play size={14}/><strong>{tr("app.creator.player.title")}</strong><small>{selected ? `${formatTime(selected.start)} — ${formatTime(selected.end)}` : tr("app.s0288")}</small></span><button aria-expanded={playerExpanded} onClick={() => setPlayerExpanded((current) => !current)}>{playerExpanded ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}{playerExpanded ? tr("app.creator.player.collapse") : tr("app.creator.player.expand")}</button></header>
 	                {playerExpanded && <>
 	                <div className="video-frame">
                   {mediaUrl ? <video key={project.id} ref={videoRef} src={mediaUrl} controls preload="metadata" onLoadedMetadata={handleVideoLoadedMetadata} onPlay={() => setPlayback((current) => ({ ...current, playing: true }))} onPause={() => setPlayback((current) => ({ ...current, playing: false }))} onTimeUpdate={handleVideoTimeUpdate}/> : <div className="video-placeholder"><Play size={30}/><span>{tr("app.s0286")}</span></div>}
@@ -2138,7 +2156,7 @@ function WorkbenchController() {
 
 	              <aside className="creator-drawer" aria-label={tr("app.creator.drawer.label")}>
 	                <div className="creator-drawer-tabs" role="tablist" aria-label={tr("app.creator.drawer.tabs")}>
-	                  {drawerTabs.map((tab) => <button id={`creator-drawer-tab-${tab}`} key={tab} role="tab" aria-controls={`creator-drawer-panel-${tab}`} aria-selected={drawerTab === tab} tabIndex={drawerTab === tab ? 0 : -1} className={drawerTab === tab ? "active" : ""} onKeyDown={(event) => changeDrawerTabFromKeyboard(event, tab)} onClick={() => openCreatorDrawer(tab)}>{tr(({ review: "app.creator.drawer.review", quality: "app.creator.drawer.quality", analysis: "app.creator.drawer.analysis", history: "app.creator.drawer.history", export: "app.creator.drawer.export" } as const)[tab])}{tab === "review" && actionableReviewCount > 0 ? <i>{actionableReviewCount}</i> : null}{tab === "quality" && project.subtitleQuality.issueCount > 0 ? <i>{project.subtitleQuality.issueCount}</i> : null}</button>)}
+	                  {drawerTabs.map((tab) => <button id={`creator-drawer-tab-${tab}`} key={tab} role="tab" aria-controls={`creator-drawer-panel-${tab}`} aria-selected={drawerTab === tab} tabIndex={drawerTab === tab ? 0 : -1} className={drawerTab === tab ? "active" : ""} data-tour={tab === "review" || tab === "quality" || tab === "export" ? tab : undefined} onKeyDown={(event) => changeDrawerTabFromKeyboard(event, tab)} onClick={() => openCreatorDrawer(tab)}>{tr(({ review: "app.creator.drawer.review", quality: "app.creator.drawer.quality", analysis: "app.creator.drawer.analysis", history: "app.creator.drawer.history", export: "app.creator.drawer.export" } as const)[tab])}{tab === "review" && actionableReviewCount > 0 ? <i>{actionableReviewCount}</i> : null}{tab === "quality" && project.subtitleQuality.issueCount > 0 ? <i>{project.subtitleQuality.issueCount}</i> : null}</button>)}
 	                </div>
 	                <div className="creator-drawer-body" id={`creator-drawer-panel-${drawerTab}`} role="tabpanel" aria-labelledby={`creator-drawer-tab-${drawerTab}`}>
 	                  {drawerTab === "review" && <>
