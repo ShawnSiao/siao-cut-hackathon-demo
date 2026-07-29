@@ -5,6 +5,7 @@ import App from "./App";
 import { AppErrorBoundary } from "./components/app-error-boundary";
 import i18n from "./i18n";
 import "./styles.css";
+import "./styles/timeline-and-tour.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

@@ -1,13 +1,13 @@
-import { ArrowLeft, ArrowRight, Bot, Check, CircleHelp, Copy, FileText, GitCompareArrows, ListChecks, MousePointer2, RotateCcw, ShieldCheck, Sparkles, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bot, Check, CircleHelp, Clock3, Copy, FileText, GitCompareArrows, ListChecks, MousePointer2, MoveHorizontal, RefreshCw, RotateCcw, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { tr } from "../i18n";
 import { Button } from "./ui";
 
-export const PRODUCT_TOUR_STORAGE_KEY = "siaocut.productTour.v2";
+export const PRODUCT_TOUR_STORAGE_KEY = "siaocut.productTour.v3";
 
-type ProductTourStepId = "welcome" | "project" | "player" | "transcript" | "review" | "agent" | "handoff" | "apply" | "quality" | "export" | "complete";
-type ProductTourDemoKind = "agent" | "handoff" | "apply";
+type ProductTourStepId = "welcome" | "project" | "player" | "transcript" | "quickRetranscribe" | "timeline" | "review" | "agent" | "handoff" | "apply" | "quality" | "export" | "complete";
+type ProductTourDemoKind = "quickRetranscribe" | "timeline" | "agent" | "handoff" | "apply";
 type ProductTourDemoState = "idle" | "running" | "complete";
 
 type ProductTourStep = {
@@ -52,6 +52,24 @@ const PRODUCT_TOUR_STEPS: ProductTourStep[] = [
     title: "app.tour.transcript.title",
     body: "app.tour.transcript.body",
     hint: "app.tour.transcript.hint",
+  },
+  {
+    id: "quickRetranscribe",
+    target: '[data-tour="quick-retranscribe"]',
+    eyebrow: "app.tour.quickRetranscribe.eyebrow",
+    title: "app.tour.quickRetranscribe.title",
+    body: "app.tour.quickRetranscribe.body",
+    hint: "app.tour.quickRetranscribe.hint",
+    demo: "quickRetranscribe",
+  },
+  {
+    id: "timeline",
+    target: '[data-tour="timeline-review"]',
+    eyebrow: "app.tour.timeline.eyebrow",
+    title: "app.tour.timeline.title",
+    body: "app.tour.timeline.body",
+    hint: "app.tour.timeline.hint",
+    demo: "timeline",
   },
   {
     id: "review",
@@ -145,6 +163,30 @@ function rememberProductTour() {
 
 function ProductTourDemo({ kind, state }: { kind: ProductTourDemoKind; state: ProductTourDemoState }) {
   const statusKey = `app.tour.${kind}.demo.${state}` as Parameters<typeof tr>[0];
+  if (kind === "quickRetranscribe") {
+    return <section className="product-tour-demo" data-kind={kind} data-state={state} aria-label={tr("app.tour.quickRetranscribe.demo.label")}>
+      <div className="product-tour-demo-flow" aria-hidden="true">
+        <span><ShieldCheck size={15}/><small>{tr("app.tour.quickRetranscribe.demo.preflight")}</small></span>
+        <i><ArrowRight size={13}/></i>
+        <span><RefreshCw size={15}/><small>{tr("app.tour.quickRetranscribe.demo.timeline")}</small></span>
+        <i><ArrowRight size={13}/></i>
+        <span><RotateCcw size={15}/><small>{tr("app.tour.quickRetranscribe.demo.version")}</small></span>
+      </div>
+      <p role="status" aria-live="polite">{tr(statusKey)}</p>
+    </section>;
+  }
+  if (kind === "timeline") {
+    return <section className="product-tour-demo" data-kind={kind} data-state={state} aria-label={tr("app.tour.timeline.demo.label")}>
+      <div className="product-tour-demo-flow" aria-hidden="true">
+        <span><Clock3 size={15}/><small>{tr("app.tour.timeline.demo.precision")}</small></span>
+        <i><ArrowRight size={13}/></i>
+        <span><MoveHorizontal size={15}/><small>{tr("app.tour.timeline.demo.nudge")}</small></span>
+        <i><ArrowRight size={13}/></i>
+        <span><ListChecks size={15}/><small>{tr("app.tour.timeline.demo.review")}</small></span>
+      </div>
+      <p role="status" aria-live="polite">{tr(statusKey)}</p>
+    </section>;
+  }
   if (kind === "agent") {
     return <section className="product-tour-demo" data-kind={kind} data-state={state} aria-label={tr("app.tour.agent.demo.label")}>
       <div className="product-tour-demo-flow" aria-hidden="true">
@@ -186,6 +228,8 @@ export function ProductTour({ onStepChange }: ProductTourProps) {
   const [demoState, setDemoState] = useState<ProductTourDemoState>("idle");
   const [highlight, setHighlight] = useState<HighlightRect | null>(null);
   const [cardPosition, setCardPosition] = useState<CSSProperties>({});
+  const [mobileDock, setMobileDock] = useState<"top" | "bottom">("bottom");
+  const [hotspotLabelBelow, setHotspotLabelBelow] = useState(false);
   const cardRef = useRef<HTMLElement>(null);
   const hotspotRef = useRef<HTMLButtonElement>(null);
   const launchButtonRef = useRef<HTMLButtonElement>(null);
@@ -228,13 +272,16 @@ export function ProductTour({ onStepChange }: ProductTourProps) {
 
   const runDemo = useCallback(() => {
     if (!step.demo || demoState !== "idle") return;
+    if (step.demo === "timeline" && step.target) {
+      document.querySelector<HTMLButtonElement>(step.target)?.click();
+    }
     setDemoState("running");
     const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     demoTimerRef.current = window.setTimeout(() => {
       setDemoState("complete");
       window.requestAnimationFrame(() => cardRef.current?.querySelector<HTMLButtonElement>(".product-tour-next")?.focus());
     }, prefersReducedMotion ? 120 : 1250);
-  }, [demoState, step.demo]);
+  }, [demoState, step.demo, step.target]);
 
   useEffect(() => {
     if (!open) return;
@@ -255,10 +302,13 @@ export function ProductTour({ onStepChange }: ProductTourProps) {
     let frame = 0;
     let secondFrame = 0;
     let resizeObserver: ResizeObserver | null = null;
-    const target = step.target ? document.querySelector<HTMLElement>(step.target) : null;
+    let target = step.target ? document.querySelector<HTMLElement>(step.target) : null;
     const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
     const measure = () => {
+      if (!target && step.target) {
+        target = document.querySelector<HTMLElement>(step.target);
+      }
       if (!target) {
         setHighlight(null);
         setCardPosition({});
@@ -276,6 +326,14 @@ export function ProductTour({ onStepChange }: ProductTourProps) {
         height: Math.max(0, Math.min(window.innerHeight - 16, rect.height + padding * 2)),
       };
       setHighlight(nextHighlight);
+      const compactViewport = window.innerWidth <= 700 || window.innerHeight <= 560;
+      if (compactViewport) {
+        setMobileDock((rect.top + rect.bottom) / 2 < window.innerHeight / 2 ? "bottom" : "top");
+        setHotspotLabelBelow(nextHighlight.top < 48);
+      } else {
+        setMobileDock("bottom");
+        setHotspotLabelBelow(false);
+      }
 
       const margin = 14;
       const gap = 16;
@@ -378,7 +436,12 @@ export function ProductTour({ onStepChange }: ProductTourProps) {
     : isFirst ? tr("app.tour.start") : isLast ? tr("app.tour.finish") : tr("app.tour.next");
   const demoActionLabel = step.demo ? tr(`app.tour.${step.demo}.demo.action` as Parameters<typeof tr>[0]) : "";
 
-  const overlay = open ? <div className={`product-tour ${targeted ? "targeted" : "centered"}`} data-demo-state={step.demo ? demoState : undefined}>
+  const overlay = open ? <div
+    className={`product-tour ${targeted ? "targeted" : "centered"}`}
+    data-demo-state={step.demo ? demoState : undefined}
+    data-mobile-dock={targeted ? mobileDock : undefined}
+    data-hotspot-label={hotspotLabelBelow ? "below" : "above"}
+  >
     {targeted && highlight ? <>
       <div className="product-tour-shield top" style={{ height: highlight.top }} />
       <div className="product-tour-shield left" style={{ top: highlight.top, width: highlight.left, height: highlight.height }} />
