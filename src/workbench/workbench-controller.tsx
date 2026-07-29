@@ -232,7 +232,7 @@ function WorkbenchController() {
     const handleProductTourStepChange = useCallback((step: string) => {
         if (step === "player")
             setPlayerExpanded(true);
-        if (step === "review") {
+        if (step === "review" || step === "agent" || step === "handoff" || step === "apply") {
             setDrawerTab("review");
             setShowExportPanel(false);
         }
@@ -2172,7 +2172,7 @@ function WorkbenchController() {
 	                        </div>
 	                      </>}
 	                      {agentRun && <div className={`creator-agent-run ${agentRun.status}`} role="status"><span><strong>{tr(`app.creator.agent.status.${agentRun.status}` as Parameters<typeof tr>[0])}</strong><small>{tr("app.creator.agent.batch", { current: agentRun.currentBatch, total: agentRun.batchCount })}</small></span><progress max={1} value={agentRun.progress}/>{["queued", "running", "submitting"].includes(agentRun.status) ? <button onClick={() => void cancelCodexAgent()}>{tr("app.creator.agent.cancel")}</button> : ["failed", "interrupted", "cancelled"].includes(agentRun.status) ? <button onClick={() => void resumeCodexAgent()}><RefreshCw size={12}/>{tr("app.creator.agent.resume")}</button> : null}{agentRun.errorMessage && <JobFailureDetails context="agent" status={agentRun.status} errorCode={agentRun.errorCode} errorMessage={agentRun.errorMessage}/>}</div>}
-	                      <div className="creator-agent-actions"><Button ref={agentButtonRef} variant="agent" disabled={!capabilities.canCreateAgentTask || agentRunActive || Boolean(busy) || (agentWorkflowKind === "speaker_names" && speakerTrack?.status !== "ready")} title={agentCapabilityTitle} onClick={startCodexAgent}><Bot size={14}/>{tr("app.creator.agent.start")}</Button><button className="button quiet" disabled={agentRunActive || Boolean(busy)} onClick={openAgentHandoff}>{tr("app.creator.agent.manual")}</button></div>
+	                      <div className="creator-agent-actions"><Button ref={agentButtonRef} variant="agent" data-tour="agent-start" disabled={!capabilities.canCreateAgentTask || agentRunActive || Boolean(busy) || (agentWorkflowKind === "speaker_names" && speakerTrack?.status !== "ready")} title={agentCapabilityTitle} onClick={startCodexAgent}><Bot size={14}/>{tr("app.creator.agent.start")}</Button><button className="button quiet" data-tour="agent-handoff" disabled={agentRunActive || Boolean(busy)} onClick={openAgentHandoff}>{tr("app.creator.agent.manual")}</button></div>
 	                      <p className="runtime-disclosure"><ShieldCheck size={13}/>{tr("app.creator.agent.boundary")}</p>
 	                    </section>
 	                    <div className="review-panel-scroll creator-review-list" role="region" aria-label={tr("app.s0297")} tabIndex={0}>

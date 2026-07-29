@@ -7,7 +7,7 @@ async function bindMockMedia(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("siaocut.productTour.v1", "complete"));
+  await page.addInitScript(() => localStorage.setItem("siaocut.productTour.v2", "complete"));
 });
 
 test("walks a newcomer through the real SiaoCut workflow on desktop and mobile", async ({ page }) => {
@@ -24,14 +24,44 @@ test("walks a newcomer through the real SiaoCut workflow on desktop and mobile",
     "画面、字幕和时间保持同步",
     "像改文档一样完成粗剪",
     "AI 只提建议，修改由人确认",
+  ]) {
+    await expect(page.getByRole("dialog", { name: title })).toBeVisible();
+    if (title !== "AI 只提建议，修改由人确认") await page.getByRole("button", { name: "下一步" }).click();
+  }
+
+  for (const highlight of [
+    {
+      title: "把文稿交给本机 Codex",
+      action: "体验本机 Codex",
+      complete: "建议已进入待审区，项目内容仍保持原样。",
+    },
+    {
+      title: "没有自动 Agent，也能完整交接",
+      action: "体验手工交接",
+      complete: "交接说明已生成；任务仍等待明确领取。",
+    },
+    {
+      title: "看清差异，再决定是否应用",
+      action: "体验应用建议",
+      complete: "已展示应用结果；示例项目没有被修改。",
+    },
+  ]) {
+    await page.getByRole("button", { name: "下一步" }).click();
+    await expect(page.getByRole("dialog", { name: highlight.title })).toBeVisible();
+    await expect(page.getByRole("button", { name: "点击高亮按钮" })).toBeDisabled();
+    await page.getByRole("button", { name: highlight.action }).click();
+    await expect(page.getByText(highlight.complete)).toBeVisible();
+    await expect(page.getByRole("button", { name: "下一步" })).toBeEnabled();
+  }
+
+  await page.getByRole("button", { name: "下一步" }).click();
+  for (const title of [
     "导出前先处理明确问题",
     "确认字幕、画布，再生成结果",
     "已经掌握 SiaoCut 主流程",
   ]) {
     await expect(page.getByRole("dialog", { name: title })).toBeVisible();
-    if (title !== "已经掌握 SiaoCut 主流程") {
-      await page.getByRole("button", { name: "下一步" }).click();
-    }
+    if (title !== "已经掌握 SiaoCut 主流程") await page.getByRole("button", { name: "下一步" }).click();
   }
 
   await expect(page.getByRole("tab", { name: "导出" })).toHaveAttribute("aria-selected", "true");
@@ -47,6 +77,23 @@ test("walks a newcomer through the real SiaoCut workflow on desktop and mobile",
   expect(mobileCard!.x + mobileCard!.width).toBeLessThanOrEqual(390);
   expect(mobileCard!.y).toBeGreaterThanOrEqual(0);
   expect(mobileCard!.y + mobileCard!.height).toBeLessThanOrEqual(844);
+  for (let step = 0; step < 4; step += 1) {
+    await page.getByRole("button", { name: "下一步" }).click();
+  }
+  const mobileAgentCard = await page.getByRole("dialog", { name: "把文稿交给本机 Codex" }).boundingBox();
+  const mobileAgentHotspot = await page.getByRole("button", { name: "体验本机 Codex" }).boundingBox();
+  expect(mobileAgentCard).not.toBeNull();
+  expect(mobileAgentHotspot).not.toBeNull();
+  expect(mobileAgentCard!.x).toBeGreaterThanOrEqual(0);
+  expect(mobileAgentCard!.x + mobileAgentCard!.width).toBeLessThanOrEqual(390);
+  expect(mobileAgentCard!.y).toBeGreaterThanOrEqual(0);
+  expect(mobileAgentCard!.y + mobileAgentCard!.height).toBeLessThanOrEqual(844);
+  expect(mobileAgentHotspot!.x).toBeGreaterThanOrEqual(0);
+  expect(mobileAgentHotspot!.x + mobileAgentHotspot!.width).toBeLessThanOrEqual(390);
+  expect(mobileAgentHotspot!.y).toBeGreaterThanOrEqual(0);
+  expect(mobileAgentHotspot!.y + mobileAgentHotspot!.height).toBeLessThanOrEqual(844);
+  await page.getByRole("button", { name: "体验本机 Codex" }).click();
+  await expect(page.getByText("建议已进入待审区，项目内容仍保持原样。")).toBeVisible();
   expect(await page.evaluate(() => ({
     viewport: window.innerWidth,
     documentWidth: document.documentElement.scrollWidth,

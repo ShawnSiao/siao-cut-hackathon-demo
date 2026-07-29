@@ -15,6 +15,7 @@ afterEach(() => {
   localStorage.removeItem(TRANSCRIPTION_LANGUAGE_STORAGE_KEY);
   localStorage.removeItem("siaocut.transcriptionMode");
   localStorage.removeItem(PRODUCT_TOUR_STORAGE_KEY);
+  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
@@ -34,6 +35,7 @@ async function selectAdvancedTranscriptionMode(mode: "quick" | "multispeaker") {
 describe("SiaoCut review workbench", () => {
   it("guides a first-time visitor through the real review-to-export workflow and can reopen later", async () => {
     localStorage.removeItem(PRODUCT_TOUR_STORAGE_KEY);
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
     render(<App />);
 
     const tour = await screen.findByRole("dialog", { name: "用 1 分钟走完一条作品" });
@@ -52,6 +54,31 @@ describe("SiaoCut review workbench", () => {
       expect(screen.getByRole("dialog", { name: title })).toBeInTheDocument();
     }
     expect(screen.getByRole("tab", { name: /^审阅/ })).toHaveAttribute("aria-selected", "true");
+
+    for (const highlight of [
+      {
+        title: "把文稿交给本机 Codex",
+        action: "体验本机 Codex",
+        complete: "建议已进入待审区，项目内容仍保持原样。",
+      },
+      {
+        title: "没有自动 Agent，也能完整交接",
+        action: "体验手工交接",
+        complete: "交接说明已生成；任务仍等待明确领取。",
+      },
+      {
+        title: "看清差异，再决定是否应用",
+        action: "体验应用建议",
+        complete: "已展示应用结果；示例项目没有被修改。",
+      },
+    ]) {
+      fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+      expect(screen.getByRole("dialog", { name: highlight.title })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "点击高亮按钮" })).toBeDisabled();
+      fireEvent.click(await screen.findByRole("button", { name: highlight.action }));
+      await waitFor(() => expect(screen.getByText(highlight.complete)).toBeInTheDocument(), { timeout: 2_500 });
+      expect(screen.getByRole("button", { name: "下一步" })).toBeEnabled();
+    }
 
     fireEvent.click(screen.getByRole("button", { name: "下一步" }));
     expect(screen.getByRole("dialog", { name: "导出前先处理明确问题" })).toBeInTheDocument();
