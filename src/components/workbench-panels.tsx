@@ -176,7 +176,7 @@ export function PatchReviewCard({ item, onReview, onSelect }: {
       <p className="proposed"><small>{tr("app.s0579")}</small>{item.target === "cut" && !item.afterText ? tr("app.s0580") : item.afterText}</p>
     </div>
     <p className="patch-meta">{item.confidence == null ? tr("app.s0581") : tr("app.s0582", { "0": Math.round(item.confidence * 100) })}</p>
-    <div className="patch-actions"><button onClick={onSelect}>{tr("app.s0303")}</button><span /><button onClick={() => onReview("keep")}>{tr("app.s0583")}</button><button className="apply" onClick={() => onReview("apply")}>{tr("app.s0584")}</button></div>
+    <div className="patch-actions"><button onClick={onSelect}>{tr("app.s0303")}</button><span /><button onClick={() => onReview("keep")}>{tr("app.s0583")}</button><button className="apply" data-tour="agent-apply" onClick={() => onReview("apply")}>{tr("app.s0584")}</button></div>
   </article>;
 }
 export function RuntimeChecklist({ runtime, modelPath, onChooseModel, compact = false }: {

@@ -1,12 +1,14 @@
-import { ArrowLeft, ArrowRight, Check, CircleHelp, MousePointer2, ShieldCheck, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bot, Check, CircleHelp, Copy, FileText, GitCompareArrows, ListChecks, MousePointer2, RotateCcw, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { tr } from "../i18n";
 import { Button } from "./ui";
 
-export const PRODUCT_TOUR_STORAGE_KEY = "siaocut.productTour.v1";
+export const PRODUCT_TOUR_STORAGE_KEY = "siaocut.productTour.v2";
 
-type ProductTourStepId = "welcome" | "project" | "player" | "transcript" | "review" | "quality" | "export" | "complete";
+type ProductTourStepId = "welcome" | "project" | "player" | "transcript" | "review" | "agent" | "handoff" | "apply" | "quality" | "export" | "complete";
+type ProductTourDemoKind = "agent" | "handoff" | "apply";
+type ProductTourDemoState = "idle" | "running" | "complete";
 
 type ProductTourStep = {
   id: ProductTourStepId;
@@ -15,6 +17,7 @@ type ProductTourStep = {
   title: Parameters<typeof tr>[0];
   body: Parameters<typeof tr>[0];
   hint?: Parameters<typeof tr>[0];
+  demo?: ProductTourDemoKind;
 };
 
 const PRODUCT_TOUR_STEPS: ProductTourStep[] = [
@@ -57,6 +60,33 @@ const PRODUCT_TOUR_STEPS: ProductTourStep[] = [
     title: "app.tour.review.title",
     body: "app.tour.review.body",
     hint: "app.tour.review.hint",
+  },
+  {
+    id: "agent",
+    target: '[data-tour="agent-start"]',
+    eyebrow: "app.tour.agent.eyebrow",
+    title: "app.tour.agent.title",
+    body: "app.tour.agent.body",
+    hint: "app.tour.agent.hint",
+    demo: "agent",
+  },
+  {
+    id: "handoff",
+    target: '[data-tour="agent-handoff"]',
+    eyebrow: "app.tour.handoff.eyebrow",
+    title: "app.tour.handoff.title",
+    body: "app.tour.handoff.body",
+    hint: "app.tour.handoff.hint",
+    demo: "handoff",
+  },
+  {
+    id: "apply",
+    target: '[data-tour="agent-apply"]',
+    eyebrow: "app.tour.apply.eyebrow",
+    title: "app.tour.apply.title",
+    body: "app.tour.apply.body",
+    hint: "app.tour.apply.hint",
+    demo: "apply",
   },
   {
     id: "quality",
@@ -113,19 +143,60 @@ function rememberProductTour() {
   }
 }
 
+function ProductTourDemo({ kind, state }: { kind: ProductTourDemoKind; state: ProductTourDemoState }) {
+  const statusKey = `app.tour.${kind}.demo.${state}` as Parameters<typeof tr>[0];
+  if (kind === "agent") {
+    return <section className="product-tour-demo" data-kind={kind} data-state={state} aria-label={tr("app.tour.agent.demo.label")}>
+      <div className="product-tour-demo-flow" aria-hidden="true">
+        <span><FileText size={15} /><small>{tr("app.tour.agent.demo.source")}</small></span>
+        <i><ArrowRight size={13} /></i>
+        <span><Bot size={15} /><small>{tr("app.tour.agent.demo.local")}</small></span>
+        <i><ArrowRight size={13} /></i>
+        <span><ListChecks size={15} /><small>{tr("app.tour.agent.demo.review")}</small></span>
+      </div>
+      <p role="status" aria-live="polite">{tr(statusKey)}</p>
+    </section>;
+  }
+  if (kind === "handoff") {
+    return <section className="product-tour-demo" data-kind={kind} data-state={state} aria-label={tr("app.tour.handoff.demo.label")}>
+      <div className="product-tour-demo-flow" aria-hidden="true">
+        <span><FileText size={15} /><small>{tr("app.tour.handoff.demo.task")}</small></span>
+        <i><ArrowRight size={13} /></i>
+        <span><Copy size={15} /><small>{tr("app.tour.handoff.demo.claim")}</small></span>
+        <i><ArrowRight size={13} /></i>
+        <span><GitCompareArrows size={15} /><small>{tr("app.tour.handoff.demo.diff")}</small></span>
+      </div>
+      <p role="status" aria-live="polite">{tr(statusKey)}</p>
+    </section>;
+  }
+  return <section className="product-tour-demo" data-kind={kind} data-state={state} aria-label={tr("app.tour.apply.demo.label")}>
+    <div className="product-tour-demo-diff">
+      <span className="before"><small>{tr("app.tour.apply.demo.before")}</small><del>{tr("app.tour.apply.demo.beforeText")}</del></span>
+      <span className="after"><small>{tr("app.tour.apply.demo.after")}</small><ins>{tr("app.tour.apply.demo.afterText")}</ins></span>
+      <em><RotateCcw size={13} />{tr("app.tour.apply.demo.version")}</em>
+      <i className="spark one" /><i className="spark two" /><i className="spark three" />
+    </div>
+    <p role="status" aria-live="polite">{tr(statusKey)}</p>
+  </section>;
+}
+
 export function ProductTour({ onStepChange }: ProductTourProps) {
   const [open, setOpen] = useState(() => !hasCompletedProductTour());
   const [stepIndex, setStepIndex] = useState(0);
+  const [demoState, setDemoState] = useState<ProductTourDemoState>("idle");
   const [highlight, setHighlight] = useState<HighlightRect | null>(null);
   const [cardPosition, setCardPosition] = useState<CSSProperties>({});
   const cardRef = useRef<HTMLElement>(null);
+  const hotspotRef = useRef<HTMLButtonElement>(null);
   const launchButtonRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const onStepChangeRef = useRef(onStepChange);
+  const demoTimerRef = useRef<number | null>(null);
   const step = PRODUCT_TOUR_STEPS[stepIndex];
   const targeted = Boolean(step.target && highlight);
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === PRODUCT_TOUR_STEPS.length - 1;
+  const demoPending = Boolean(step.demo && demoState !== "complete");
 
   useEffect(() => {
     onStepChangeRef.current = onStepChange;
@@ -155,9 +226,27 @@ export function ProductTour({ onStepChange }: ProductTourProps) {
     setStepIndex((current) => Math.max(0, current - 1));
   }, []);
 
+  const runDemo = useCallback(() => {
+    if (!step.demo || demoState !== "idle") return;
+    setDemoState("running");
+    const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    demoTimerRef.current = window.setTimeout(() => {
+      setDemoState("complete");
+      window.requestAnimationFrame(() => cardRef.current?.querySelector<HTMLButtonElement>(".product-tour-next")?.focus());
+    }, prefersReducedMotion ? 120 : 1250);
+  }, [demoState, step.demo]);
+
   useEffect(() => {
     if (!open) return;
     onStepChangeRef.current(step.id);
+    setDemoState("idle");
+    if (demoTimerRef.current != null) {
+      window.clearTimeout(demoTimerRef.current);
+      demoTimerRef.current = null;
+    }
+    return () => {
+      if (demoTimerRef.current != null) window.clearTimeout(demoTimerRef.current);
+    };
   }, [open, step.id]);
 
   useLayoutEffect(() => {
@@ -192,11 +281,13 @@ export function ProductTour({ onStepChange }: ProductTourProps) {
       const gap = 16;
       const cardWidth = Math.min(cardRef.current?.offsetWidth || 368, window.innerWidth - margin * 2);
       const cardHeight = Math.min(cardRef.current?.offsetHeight || 270, window.innerHeight - margin * 2);
+      const sideTop = Math.min(Math.max(margin, nextHighlight.top), Math.max(margin, window.innerHeight - cardHeight - margin));
+      const verticalLeft = Math.min(Math.max(margin, nextHighlight.left), Math.max(margin, window.innerWidth - cardWidth - margin));
       const candidates = [
-        { left: nextHighlight.right + gap, top: nextHighlight.top },
-        { left: nextHighlight.left - cardWidth - gap, top: nextHighlight.top },
-        { left: nextHighlight.left, top: nextHighlight.bottom + gap },
-        { left: nextHighlight.left, top: nextHighlight.top - cardHeight - gap },
+        { left: nextHighlight.right + gap, top: sideTop },
+        { left: nextHighlight.left - cardWidth - gap, top: sideTop },
+        { left: verticalLeft, top: nextHighlight.bottom + gap },
+        { left: verticalLeft, top: nextHighlight.top - cardHeight - gap },
       ];
       const fitting = candidates.find((candidate) =>
         candidate.left >= margin
@@ -212,7 +303,11 @@ export function ProductTour({ onStepChange }: ProductTourProps) {
     };
 
     if (target) {
-      target.scrollIntoView?.({ behavior: prefersReducedMotion ? "auto" : "smooth", block: "center", inline: "nearest" });
+      target.scrollIntoView?.({
+        behavior: prefersReducedMotion || window.innerWidth <= 700 ? "auto" : "smooth",
+        block: window.innerWidth <= 700 ? "start" : "center",
+        inline: "nearest",
+      });
       if (typeof ResizeObserver !== "undefined") {
         resizeObserver = new ResizeObserver(measure);
         resizeObserver.observe(target);
@@ -232,7 +327,7 @@ export function ProductTour({ onStepChange }: ProductTourProps) {
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, true);
     };
-  }, [open, step.id, step.target]);
+  }, [demoState, open, step.id, step.target]);
 
   useEffect(() => {
     if (!open) return;
@@ -247,6 +342,7 @@ export function ProductTour({ onStepChange }: ProductTourProps) {
       }
       if (event.key !== "Tab") return;
       const focusable = Array.from(cardRef.current?.querySelectorAll<HTMLElement>("button:not(:disabled), [tabindex]:not([tabindex='-1'])") ?? []);
+      if (hotspotRef.current && !hotspotRef.current.disabled) focusable.unshift(hotspotRef.current);
       if (!focusable.length) return;
       const first = focusable[0];
       const last = focusable.at(-1)!;
@@ -266,18 +362,37 @@ export function ProductTour({ onStepChange }: ProductTourProps) {
     };
   }, [close, open]);
 
+  useEffect(() => {
+    if (!open || !step.demo || demoState !== "idle") return;
+    const frame = window.requestAnimationFrame(() => hotspotRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [demoState, open, step.demo, step.id]);
+
   const progressLabel = useMemo(
     () => tr("app.tour.progress", { current: stepIndex + 1, total: PRODUCT_TOUR_STEPS.length }),
     [stepIndex],
   );
 
-  const overlay = open ? <div className={`product-tour ${targeted ? "targeted" : "centered"}`}>
+  const nextLabel = step.demo
+    ? demoState === "running" ? tr("app.tour.demo.running") : demoState === "idle" ? tr("app.tour.demo.waiting") : tr("app.tour.next")
+    : isFirst ? tr("app.tour.start") : isLast ? tr("app.tour.finish") : tr("app.tour.next");
+  const demoActionLabel = step.demo ? tr(`app.tour.${step.demo}.demo.action` as Parameters<typeof tr>[0]) : "";
+
+  const overlay = open ? <div className={`product-tour ${targeted ? "targeted" : "centered"}`} data-demo-state={step.demo ? demoState : undefined}>
     {targeted && highlight ? <>
       <div className="product-tour-shield top" style={{ height: highlight.top }} />
       <div className="product-tour-shield left" style={{ top: highlight.top, width: highlight.left, height: highlight.height }} />
       <div className="product-tour-shield right" style={{ top: highlight.top, left: highlight.right, height: highlight.height }} />
       <div className="product-tour-shield bottom" style={{ top: highlight.bottom }} />
       <div className="product-tour-focus" aria-hidden="true" style={{ top: highlight.top, left: highlight.left, width: highlight.width, height: highlight.height }} />
+      {step.demo ? <button
+        ref={hotspotRef}
+        className="product-tour-hotspot"
+        style={{ top: highlight.top, left: highlight.left, width: highlight.width, height: highlight.height }}
+        aria-label={demoActionLabel}
+        disabled={demoState !== "idle"}
+        onClick={runDemo}
+      ><span>{demoState === "complete" ? <Check size={14} /> : demoState === "running" ? <Sparkles size={14} /> : <MousePointer2 size={14} />}{demoState === "complete" ? tr("app.tour.demo.complete") : demoActionLabel}</span></button> : null}
     </> : <div className="product-tour-shield full" />}
     <section
       ref={cardRef}
@@ -297,6 +412,7 @@ export function ProductTour({ onStepChange }: ProductTourProps) {
         <p className="eyebrow">{tr(step.eyebrow)}</p>
         <h2 id="product-tour-title">{tr(step.title)}</h2>
         <p id="product-tour-description">{tr(step.body)}</p>
+        {step.demo ? <ProductTourDemo kind={step.demo} state={demoState} /> : null}
         {step.hint ? <aside><CircleHelp size={15} /><span>{tr(step.hint)}</span></aside> : null}
       </div>
       <div className="product-tour-progress" aria-hidden="true">
@@ -304,9 +420,9 @@ export function ProductTour({ onStepChange }: ProductTourProps) {
       </div>
       <footer>
         <button className="product-tour-back" disabled={isFirst} onClick={previous}><ArrowLeft size={15} />{tr("app.tour.back")}</button>
-        <button className="product-tour-next" autoFocus={isFirst} onClick={next}>
-          {isFirst ? tr("app.tour.start") : isLast ? tr("app.tour.finish") : tr("app.tour.next")}
-          {isLast ? <Check size={15} /> : <ArrowRight size={15} />}
+        <button className="product-tour-next" autoFocus={isFirst} disabled={demoPending} onClick={next}>
+          {nextLabel}
+          {isLast ? <Check size={15} /> : demoPending ? <MousePointer2 size={15} /> : <ArrowRight size={15} />}
         </button>
       </footer>
     </section>
