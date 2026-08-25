@@ -1,19 +1,19 @@
 import { sampleProject } from "./mock";
-import type { AgentRun, AudioAnalysisJob, AutoWorkflow, CoreEnvelope, ExportJob, ModelDownloadJob, ModelStatus, Project, RuntimeInfo, SourceImportJob, SourcePreview, SpeakerJob, SpeakerPackageStatus, SpeakerTrack, SubtitleImportPreview, SubtitleStructureEdit, TranscriptionJob, TranscriptionProviderConfig, TranscriptionProviderHealth, TranscriptionReviewItem, UpdateDownloadEvent, UpdateMetadata, UpdatePolicy } from "./types";
+import type { AgentRun, AudioAnalysisJob, AutoWorkflow, CoreEnvelope, ExportJob, LocalCapabilityId, LocalResourceJob, LocalResourceStatus, LocalTranscriptionProfile, ModelDownloadJob, ModelStatus, Project, RuntimeInfo, SourceImportJob, SourcePreview, SpeakerJob, SpeakerPackageStatus, SpeakerTrack, SubtitleImportPreview, SubtitleStructureEdit, TranscriptionJob, TranscriptionProviderConfig, TranscriptionProviderHealth, TranscriptionReviewItem, UpdateDownloadEvent, UpdateMetadata, UpdatePolicy } from "./types";
 
 const isTauri = () => "__TAURI_INTERNALS__" in window;
 const mockSubtitleStylePresets = [
-  { id: "compact", label: "紧凑", description: "42 px，适合信息密度较高的双语字幕" },
-  { id: "standard", label: "清晰", description: "52 px，默认口播字幕，兼顾可读性和画面占用" },
-  { id: "emphasis", label: "强调", description: "60 px，加粗描边，适合短句和重点表达" },
+  { id: "compact", label: "紧凑", description: "译文 42 px、原文 32 px，适合信息密度较高的双语字幕" },
+  { id: "standard", label: "清晰", description: "译文 52 px、原文 40 px，默认突出目标受众语言" },
+  { id: "emphasis", label: "强调", description: "译文 60 px、原文 46 px，加粗描边突出目标语言" },
 ] satisfies Array<{ id: Project["subtitleStyle"]["preset"]; label: string; description: string }>;
 
 const resolveMockSubtitleStyle = (preset: Project["subtitleStyle"]["preset"], position: Project["subtitleStyle"]["position"]): Project["subtitleStyle"] => {
   const sizes = preset === "compact"
-    ? { fontSize: 42, secondaryFontSize: 32, outlineWidth: 2, shadowDepth: 1, safeMarginPercent: 6 }
+    ? { fontSize: 32, secondaryFontSize: 42, outlineWidth: 2, shadowDepth: 1, safeMarginPercent: 3 }
     : preset === "emphasis"
-      ? { fontSize: 60, secondaryFontSize: 46, outlineWidth: 4, shadowDepth: 2, safeMarginPercent: 10 }
-      : { fontSize: 52, secondaryFontSize: 40, outlineWidth: 3, shadowDepth: 1, safeMarginPercent: 8 };
+      ? { fontSize: 46, secondaryFontSize: 60, outlineWidth: 4, shadowDepth: 2, safeMarginPercent: 5 }
+      : { fontSize: 40, secondaryFontSize: 52, outlineWidth: 3, shadowDepth: 1, safeMarginPercent: 4 };
   return {
     preset,
     position,
@@ -26,6 +26,8 @@ const resolveMockSubtitleStyle = (preset: Project["subtitleStyle"]["preset"], po
   };
 };
 let mockProject = structuredClone(sampleProject);
+let mockProjectListOverride: Project | null = null;
+let mockAuthorizedMediaUrl: string | null = null;
 let mockProjects: Project[] = [];
 let mockUndoStack: Project[] = [];
 let mockRedoStack: Project[] = [];
@@ -42,9 +44,61 @@ const mockSpeakerTracks = new Map<string, SpeakerTrack>();
 const mockTranscriptionJobs = new Map<string, TranscriptionJob>();
 const mockAgentRuns = new Map<string, AgentRun>();
 const mockAgentPolls = new Map<string, number>();
+const executionKindReason = (kind: AgentRun["executionKind"]) => kind === "api" ? "AI 服务提供的待审建议" : "本机 Codex 提供的待审建议";
 let mockTranscriptionConfig: TranscriptionProviderConfig = { providerId: "moss_openai", endpoint: "http://127.0.0.1:8000", modelId: "OpenMOSS-Team/MOSS-Transcribe-Diarize", updatedAt: new Date().toISOString() };
 let mockTranscriptionHealth: TranscriptionProviderHealth = { ...mockTranscriptionConfig, state: "healthy", detail: "本机 MOSS 服务可用。", checkedAt: new Date().toISOString() };
 let mockTranscriptionReviews: TranscriptionReviewItem[] = [];
+const mockResourceJobs = new Map<string, LocalResourceJob>();
+const defaultMockLocalResources = (): LocalResourceStatus => ({
+  configured: true,
+  root: "D:\\SiaoCut Resources",
+  rootAvailable: true,
+  writable: true,
+  availableBytes: 256 * 1024 * 1024 * 1024,
+  transcriptionProfile: "standard",
+  capabilities: [
+    { id: "basic_media", name: "基础媒体处理", state: "ready", enabled: true },
+    { id: "url_import", name: "URL 导入", state: "ready", enabled: true },
+    { id: "local_transcription", name: "本地转录", state: "not_ready", enabled: false },
+    { id: "speaker_identity", name: "说话人识别", state: "not_ready", enabled: false },
+  ],
+  needsSetup: false,
+});
+let mockLocalResources = defaultMockLocalResources();
+
+export function setMockLocalResourcesForTest(status: LocalResourceStatus) {
+  mockLocalResources = structuredClone(status);
+  mockResourceJobs.clear();
+}
+
+export function resetMockLocalResourcesForTest() {
+  mockLocalResources = defaultMockLocalResources();
+  mockResourceJobs.clear();
+  mockModels.forEach((model) => {
+    const installed = model.id === "tiny";
+    model.installed = installed;
+    model.bytesOnDisk = installed ? model.size : 0;
+    model.verified = installed ? true : null;
+    model.verificationStatus = installed ? "verified" : "not_installed";
+  });
+}
+
+export function setMockProjectForTest(project: Project) {
+  mockProjectListOverride = structuredClone(project);
+}
+
+export function setMockAuthorizedMediaForTest(url: string) {
+  mockAuthorizedMediaUrl = url;
+}
+
+export function mockAuthorizeMedia(): string | null {
+  return mockAuthorizedMediaUrl;
+}
+
+export function resetMockProjectForTest() {
+  mockProjectListOverride = null;
+  mockAuthorizedMediaUrl = null;
+}
 
 function syncMockProject(next: Project): Project {
   mockProject = structuredClone(next);
@@ -151,6 +205,7 @@ const mockSubtitlePreview: SubtitleImportPreview = {
   format: "srt",
   sourcePath: "demo.srt",
   sha256: "a".repeat(64),
+  expectedVersionId: "v1",
   segmentCount: 2,
   segments: [
     { id: "preview-1", start: 0, end: 2, text: "导入后的第一条字幕", confidence: null },
@@ -268,6 +323,79 @@ function ensureOk(envelope: CoreEnvelope): CoreEnvelope {
 export async function mockRun(args: string[]): Promise<CoreEnvelope> {
   const [command, subcommand] = args;
   const valueAfter = (flag: string) => args.includes(flag) ? args[args.indexOf(flag) + 1] : null;
+  if (command === "resources" && subcommand === "status") return { apiVersion: "0.1", status: "ok", localResources: structuredClone(mockLocalResources) };
+  if (command === "resources" && subcommand === "plan") {
+    const capabilityId = args[2] as LocalCapabilityId;
+    const profile = (valueAfter("--profile") ?? mockLocalResources.transcriptionProfile) as LocalTranscriptionProfile;
+    const profileBytes = { fast: 77_691_713, standard: 147_951_465, quality: 487_601_967 }[profile];
+    const downloadBytes = capabilityId === "url_import" ? 88_713_154
+      : capabilityId === "local_transcription" ? 70_510_962 + 7_982_101 + profileBytes
+        : capabilityId === "speaker_identity" ? 70_510_962 + 64_389_270
+          : 70_510_962;
+    return { apiVersion: "0.1", status: "ok", resourcePlan: { capabilityId, capabilityName: capabilityId, transcriptionProfile: capabilityId === "local_transcription" ? profile : null, downloadBytes, unknownSize: false } };
+  }
+  if (command === "resources" && subcommand === "configure") {
+    const root = valueAfter("--root");
+    if (!root) throw new Error("resource_setup_required: 请先选择本地资源保存位置");
+    mockLocalResources = { ...mockLocalResources, configured: true, root, rootAvailable: true, writable: true, needsSetup: false };
+    return { apiVersion: "0.1", status: "ok", localResources: structuredClone(mockLocalResources) };
+  }
+  if (command === "resources" && subcommand === "migrate") {
+    const root = valueAfter("--root");
+    if (!root) throw new Error("resource_setup_required: 请先选择本地资源保存位置");
+    mockLocalResources = { ...mockLocalResources, configured: true, root, rootAvailable: true, writable: true, needsSetup: false };
+    return { apiVersion: "0.1", status: "ok", localResources: structuredClone(mockLocalResources), resourceMigration: { targetRoot: root } };
+  }
+  if (command === "resources" && ["install", "update", "repair"].includes(subcommand)) {
+    const capabilityId = args[2] as LocalCapabilityId;
+    const profile = (valueAfter("--profile") ?? mockLocalResources.transcriptionProfile) as LocalTranscriptionProfile;
+    const now = new Date().toISOString();
+    const profileBytes = { fast: 77_691_713, standard: 147_951_465, quality: 487_601_967 }[profile];
+    const totalBytes = capabilityId === "url_import" ? 88_713_154
+      : capabilityId === "local_transcription" ? 70_510_962 + 7_982_101 + profileBytes
+        : capabilityId === "speaker_identity" ? 70_510_962 + 64_389_270
+          : 70_510_962;
+    const job: LocalResourceJob = { id: `resource-${Date.now()}`, capabilityId, status: "completed", stage: "completed", progress: 1, bytesDownloaded: totalBytes, totalBytes, targetRoot: mockLocalResources.root ?? "D:\\SiaoCut Resources", cancelRequestedAt: null, errorMessage: null, errorCode: null, createdAt: now, updatedAt: now, completedAt: now, workerPid: null, attemptCount: 1 };
+    mockResourceJobs.set(job.id, job);
+    mockLocalResources = { ...mockLocalResources, transcriptionProfile: capabilityId === "local_transcription" ? profile : mockLocalResources.transcriptionProfile, capabilities: mockLocalResources.capabilities.map((capability) => capability.id === capabilityId || (["url_import", "local_transcription", "speaker_identity"].includes(capabilityId) && capability.id === "basic_media") ? { ...capability, state: "ready", enabled: true } : capability) };
+    if (capabilityId === "local_transcription") {
+      const modelId = { fast: "tiny", standard: "base", quality: "small" }[profile];
+      mockModels.forEach((model) => {
+        const active = model.id === modelId;
+        model.installed = active;
+        model.bytesOnDisk = active ? model.size : 0;
+        model.verified = active ? true : null;
+        model.verificationStatus = active ? "verified" : "not_installed";
+      });
+    }
+    if (capabilityId === "speaker_identity")
+      mockSpeakerPackage = { ...mockSpeakerPackage, installed: true, verified: true, verificationStatus: "verified", assets: mockSpeakerPackage.assets.map((asset) => ({ ...asset, installed: true, verified: true, verificationStatus: "verified" })) };
+    return { apiVersion: "0.1", status: "ok", resourceJob: structuredClone(job) };
+  }
+  if (command === "resources" && subcommand === "jobs") return { apiVersion: "0.1", status: "ok", resourceJobs: Array.from(mockResourceJobs.values()).reverse() };
+  if (command === "resources" && subcommand === "job") return { apiVersion: "0.1", status: "ok", resourceJob: structuredClone(mockResourceJobs.get(args[2])) };
+  if (command === "resources" && subcommand === "cancel") {
+    const job = mockResourceJobs.get(args[2]);
+    if (job) { job.status = "cancelled"; job.stage = "cancelled"; job.cancelRequestedAt = new Date().toISOString(); }
+    return { apiVersion: "0.1", status: "ok", resourceJob: job ? structuredClone(job) : undefined };
+  }
+  if (command === "resources" && subcommand === "resume") {
+    const job = mockResourceJobs.get(args[2]);
+    if (job) { job.status = "completed"; job.stage = "completed"; job.progress = 1; job.cancelRequestedAt = null; job.attemptCount += 1; }
+    return { apiVersion: "0.1", status: "ok", resourceJob: job ? structuredClone(job) : undefined };
+  }
+  if (command === "resources" && subcommand === "remove") {
+    const capabilityId = args[2] as LocalCapabilityId;
+    mockLocalResources = { ...mockLocalResources, capabilities: mockLocalResources.capabilities.map((capability) => capability.id === capabilityId ? { ...capability, state: "not_ready", enabled: false } : capability) };
+    return { apiVersion: "0.1", status: "ok", localResources: structuredClone(mockLocalResources) };
+  }
+  if (command === "resources" && subcommand === "rollback") {
+    const capabilityId = args[2] as LocalCapabilityId;
+    mockLocalResources = { ...mockLocalResources, capabilities: mockLocalResources.capabilities.map((capability) => capability.id === capabilityId ? { ...capability, state: "ready", enabled: true, canRollback: true } : capability) };
+    return { apiVersion: "0.1", status: "ok", localResources: structuredClone(mockLocalResources), resourceRollback: { capabilityId } };
+  }
+  if (command === "resources" && subcommand === "cleanup")
+    return { apiVersion: "0.1", status: "ok", localResources: structuredClone(mockLocalResources), resourceCleanup: { filesRemoved: 0, directoriesRemoved: 0, bytesReclaimed: 0 } };
   if (command === "import") {
     const imported = structuredClone(sampleProject);
     const sourcePath = args[1] ?? "demo.mp4";
@@ -281,7 +409,7 @@ export async function mockRun(args: string[]): Promise<CoreEnvelope> {
     return { apiVersion: "0.1", status: "ok", project: structuredClone(imported), message: "本地媒体已导入。" };
   }
   if (command === "project" && subcommand === "list") {
-    mockProject = structuredClone(sampleProject);
+    mockProject = structuredClone(mockProjectListOverride ?? sampleProject);
     const secondary = structuredClone(sampleProject);
     secondary.id = "p_secondary";
     secondary.title = "第二个本地项目";
@@ -329,9 +457,12 @@ export async function mockRun(args: string[]): Promise<CoreEnvelope> {
       if (job.projectId === args[2] && ["queued", "running", "finalizing", "awaiting_apply"].includes(job.status))
         blockers.push({ kind: "transcription", id: job.id, status: job.status });
     }
-    return { apiVersion: "0.1", status: "ok", deletionPreflight: { projectId: args[2], deletable: blockers.length === 0, blockers } };
+    return { apiVersion: "0.1", status: "ok", deletionPreflight: { projectId: args[2], expectedVersionId: candidate?.history.currentVersionId ?? "", deletable: blockers.length === 0, blockers } };
   }
   if (command === "project" && subcommand === "delete") {
+    const candidate = mockProjects.find((project) => project.id === args[2]);
+    if (valueAfter("--expected-version") !== (candidate?.history.currentVersionId ?? ""))
+      throw new Error("project_delete_version_mismatch: 项目在删除确认后发生变化，请重新确认");
     mockProjects = mockProjects.filter((project) => project.id !== args[2]);
     mockProject = mockProjects[0] ?? structuredClone(sampleProject);
     return { apiVersion: "0.1", status: "ok", projectId: args[2], message: "项目已删除；原始媒体文件未被修改。" };
@@ -402,12 +533,40 @@ export async function mockRun(args: string[]): Promise<CoreEnvelope> {
   if (command === "transcript" && subcommand === "set-style") {
     const preset = args[args.indexOf("--preset") + 1] as Project["subtitleStyle"]["preset"];
     const position = args[args.indexOf("--position") + 1] as Project["subtitleStyle"]["position"];
-    mockProject.subtitleStyle = resolveMockSubtitleStyle(preset, position);
+    const sourceFontSize = valueAfter("--source-font-size");
+    const translationFontSize = valueAfter("--translation-font-size");
+    recordMockSnapshot();
+    mockProject.subtitleStyle = {
+      ...resolveMockSubtitleStyle(preset, position),
+      ...(sourceFontSize == null ? {} : { fontSize: Number(sourceFontSize) }),
+      ...(translationFontSize == null ? {} : { secondaryFontSize: Number(translationFontSize) }),
+    };
     const versionId = `v${mockProject.versions.length + 1}`;
     mockProject.versions.push({ id: versionId, reason: "更新字幕样式", createdAt: new Date().toISOString() });
     mockProject.history = { canUndo: true, canRedo: false, currentVersionId: versionId };
     mockProjects = mockProjects.map((item) => item.id === mockProject.id ? mockProject : item);
     return { apiVersion: "0.1", status: "ok", project: mockProject, subtitleStyle: mockProject.subtitleStyle, subtitleStylePresets: mockSubtitleStylePresets, message: "字幕样式已更新；正文和时间未修改，可通过项目历史撤销。" };
+  }
+  if (command === "translation" && subcommand === "edit") {
+    const segmentId = args[3];
+    const language = valueAfter("--lang") ?? "";
+    const text = valueAfter("--text")?.trim() ?? "";
+    if (valueAfter("--expected-version") !== mockProject.history.currentVersionId)
+      throw new Error("translation_version_conflict: 项目版本已变化，请刷新后重试");
+    const next = structuredClone(mockProject);
+    const translation = next.translations[language];
+    const translated = translation?.segments.find((segment) => segment.segmentId === segmentId);
+    if (!translation || !translated) throw new Error("translation_not_found: 译文不存在");
+    if (!text) throw new Error("translation_text_empty: 译文不能为空");
+    recordMockSnapshot();
+    translated.text = text;
+    translated.sourceHash = `manual:${next.transcript.segments.find((segment) => segment.id === segmentId)?.text ?? ""}`;
+    translated.status = "current";
+    translation.status = translation.segments.every((segment) => segment.status === "current") ? "current" : "stale";
+    const versionId = `v${next.versions.length + 1}`;
+    next.versions.push({ id: versionId, reason: "编辑译文", createdAt: new Date().toISOString() });
+    next.history = { canUndo: true, canRedo: false, currentVersionId: versionId };
+    return { apiVersion: "0.1", status: "ok", project: syncMockProject(next), message: "译文已更新，并与当前原文版本重新关联。" };
   }
   if (command === "transcript" && subcommand === "edit") {
     const segmentId = args[3];
@@ -523,23 +682,24 @@ export async function mockRun(args: string[]): Promise<CoreEnvelope> {
     impact.wordsShifted = shifted;
     return finishMockStructureEdit("offset", segmentIds, null, [], impact);
   }
+  if (command === "transcript" && subcommand === "inspect-file") {
+    return { apiVersion: "0.1", status: "ok", subtitleImportPreview: { ...structuredClone(mockSubtitlePreview), expectedVersionId: mockProject.history.currentVersionId ?? "" }, message: "字幕文件已预检；尚未写入项目。" };
+  }
   if (command === "transcript" && subcommand === "replacement-preflight") {
     return {
       apiVersion: "0.1",
       status: "ok",
       transcriptReplacementPreflight: {
         canReplace: true,
-        currentVersionId: mockProject.history.currentVersionId ?? mockProject.versions.at(-1)?.id ?? "v-demo",
+        currentVersionId: mockProject.history.currentVersionId ?? "",
         blockers: { edits: 0, patchItems: 0, taskSegments: 0 },
       },
-      message: "字幕替换预检已通过。",
     };
-  }
-  if (command === "transcript" && subcommand === "inspect-file") {
-    return { apiVersion: "0.1", status: "ok", subtitleImportPreview: structuredClone(mockSubtitlePreview), message: "字幕文件已预检；尚未写入项目。" };
   }
   if (command === "transcript" && subcommand === "import-file") {
     if (!args.includes("--confirm-replace")) throw new Error("替换项目字幕需要显式确认");
+    if (valueAfter("--expected-version") !== mockProject.history.currentVersionId)
+      throw new Error("subtitle_import_version_mismatch: 项目在字幕导入确认后发生变化，请重新预检");
     const nextProject = structuredClone(mockProject);
     nextProject.transcript = {
       sourceLanguage: nextProject.transcript.sourceLanguage,
@@ -564,14 +724,16 @@ export async function mockRun(args: string[]): Promise<CoreEnvelope> {
     return { apiVersion: "0.1", status: "ok", projectId: mockProject.id, outputPath: valueAfter("--output"), format: valueAfter("--format"), message: "字幕已导出。" };
   }
   if (command === "transcribe") {
+    if (valueAfter("--expected-version") !== mockProject.history.currentVersionId)
+      throw new Error("transcription_project_changed: 项目已发生变化，请重新确认");
+    if (mockProject.transcript.segments.length && !args.includes("--confirm-replace"))
+      throw new Error("transcription_apply_confirmation_required: 重新生成字幕前必须明确确认替换当前字幕");
     const language = valueAfter("--language");
     if (language === "en" || language === "zh") mockProject.transcript.sourceLanguage = language;
-    if (mockProject.transcript.segments.length && !args.includes("--confirm-replace")) throw new Error("替换项目字幕需要显式确认");
     if (args.includes("--confirm-replace")) {
-      recordMockSnapshot();
-      const nextVersion = { id: `v${mockProject.versions.length + 1}`, reason: "重新生成快速字幕", createdAt: new Date().toISOString() };
-      mockProject.versions.push(nextVersion);
-      mockProject.history = { canUndo: true, canRedo: false, currentVersionId: nextVersion.id };
+      const versionId = `v-quick-${Date.now()}`;
+      mockProject.versions.push({ id: versionId, reason: "whisper.cpp 本地转录", createdAt: new Date().toISOString() });
+      mockProject.history = { canUndo: true, canRedo: false, currentVersionId: versionId };
       mockProjects = mockProjects.map((item) => item.id === mockProject.id ? mockProject : item);
     }
     return {
@@ -641,11 +803,15 @@ export async function mockRun(args: string[]): Promise<CoreEnvelope> {
     mockProject.mediaArtifacts = { status: "ready", proxyPath: "proxy.mp4", waveformPath: "waveform.png", thumbnails: [], sourceSha256: "demo", updatedAt: new Date().toISOString(), errorMessage: null };
     return { apiVersion: "0.1", status: "ok", project: mockProject, message: "预览资源已生成；原片未修改。" };
   }
-  if (command === "cut" && ["apply", "restore"].includes(subcommand)) {
-    const edit = mockProject.edits.find((candidate) => candidate.id === args[3]);
-    if (edit) edit.status = subcommand === "apply" ? "applied" : "restored";
-    updateMockTimeline();
-    return { apiVersion: "0.1", status: "ok", project: mockProject };
+    if (command === "cut" && ["apply", "restore", "dismiss"].includes(subcommand)) {
+      const edit = mockProject.edits.find((candidate) => candidate.id === args[3]);
+      recordMockSnapshot();
+      if (edit) edit.status = subcommand === "apply" ? "applied" : subcommand === "dismiss" ? "dismissed" : "restored";
+      const versionId = `v${mockProject.versions.length + 1}`;
+      mockProject.versions.push({ id: versionId, reason: subcommand === "apply" ? "应用软剪辑" : subcommand === "dismiss" ? "保留原片" : "恢复剪辑", createdAt: new Date().toISOString() });
+      mockProject.history = { canUndo: true, canRedo: false, currentVersionId: versionId };
+      updateMockTimeline();
+      return { apiVersion: "0.1", status: "ok", project: mockProject };
   }
   if (command === "cut" && subcommand === "detect") {
     const existing = mockProject.edits.find((edit) => edit.id === "e-detected");
@@ -694,8 +860,10 @@ export async function mockRun(args: string[]): Promise<CoreEnvelope> {
     const now = new Date().toISOString();
     const subtitleModeIndex = args.indexOf("--subtitle-mode");
     const subtitleMode = (subtitleModeIndex >= 0 ? args[subtitleModeIndex + 1] : "source") as ExportJob["subtitleMode"];
+    const subtitleDeliveryIndex = args.indexOf("--subtitle-delivery");
+    const subtitleDelivery = (subtitleDeliveryIndex >= 0 ? args[subtitleDeliveryIndex + 1] : args.includes("--burn-subtitles") ? "burned" : "none") as ExportJob["subtitleDelivery"];
     const language = args.includes("--lang") ? args[args.indexOf("--lang") + 1] : null;
-    const job: ExportJob = { id, projectId: mockProject.id, outputPath: args[args.indexOf("--output") + 1], status: "completed", progress: 1, burnSubtitles: args.includes("--burn-subtitles"), language, bilingual: subtitleMode === "bilingual", subtitleMode, allowStaleTranslation: args.includes("--confirm-stale-translation"), canvasSettings: structuredClone(mockProject.canvasSettings), subtitleStyle: structuredClone(mockProject.subtitleStyle), cancelRequestedAt: null, errorMessage: null, manifestPath: "demo.siaocut.json", createdAt: now, updatedAt: now, completedAt: now };
+    const job: ExportJob = { id, projectId: mockProject.id, outputPath: args[args.indexOf("--output") + 1], status: "completed", progress: 1, burnSubtitles: subtitleDelivery === "burned", subtitleDelivery, language, bilingual: subtitleMode === "bilingual", subtitleMode, allowStaleTranslation: args.includes("--confirm-stale-translation"), canvasSettings: structuredClone(mockProject.canvasSettings), subtitleStyle: structuredClone(mockProject.subtitleStyle), cancelRequestedAt: null, errorMessage: null, manifestPath: "demo.siaocut.json", createdAt: now, updatedAt: now, completedAt: now };
     mockJobs.set(id, job);
     return { apiVersion: "0.1", status: "ok", job, jobId: id };
   }
@@ -937,11 +1105,19 @@ export async function mockRun(args: string[]): Promise<CoreEnvelope> {
       outputPath: valueAfter("--output") ?? "SiaoCut-auto.mp4",
       burnSubtitles: args.includes("--burn-subtitles"),
       subtitleMode: (valueAfter("--subtitle-mode") ?? "source") as AutoWorkflow["subtitleMode"],
+      profile: (valueAfter("--profile") ?? "balanced") as AutoWorkflow["profile"],
       status: "running",
       currentStage: "import",
       progress: 0.08,
       transcriptVersionId: null,
       agentTaskId: null,
+      audioAnalysisJobId: null,
+      aiExecutionKind: valueAfter("--ai-execution") as AutoWorkflow["aiExecutionKind"],
+      aiServiceConfigId: valueAfter("--ai-service-config-id"),
+      aiServiceRevision: valueAfter("--ai-service-revision") ? Number(valueAfter("--ai-service-revision")) : null,
+      aiNetworkRevision: valueAfter("--ai-network-revision") ? Number(valueAfter("--ai-network-revision")) : null,
+      aiModelId: valueAfter("--ai-model-id"),
+      aiAuthorized: args.includes("--confirm-ai-text-send"),
       exportJobId: null,
       audit: null,
       cancelRequestedAt: null,
@@ -975,22 +1151,37 @@ export async function mockRun(args: string[]): Promise<CoreEnvelope> {
         workflow.progress = 0.68;
       } else if (polls === 1) {
         workflow.currentStage = "transcribe";
-        workflow.progress = 0.32;
+        workflow.progress = workflow.profile === "delivery" ? 0.10 : 0.15;
         workflow.projectId = "p-auto";
-        mockProject = { ...structuredClone(sampleProject), id: workflow.projectId, title: workflow.title ?? (workflow.inputKind === "url" ? mockSourcePreview.title : "一键成片项目"), tasks: [], patchSets: [], edits: structuredClone(sampleProject.edits.slice(0, 1)) };
+        mockProject = { ...structuredClone(sampleProject), id: workflow.projectId, title: workflow.title ?? (workflow.inputKind === "url" ? mockSourcePreview.title : "一键成片项目"), tasks: [], patchSets: [], edits: workflow.profile === "draft" ? [] : structuredClone(sampleProject.edits.slice(0, 1)) };
+      } else if (polls === 2 && workflow.profile === "draft") {
+        workflow.currentStage = "audit";
+        workflow.progress = 0.70;
+        workflow.transcriptVersionId = "v-auto-transcript";
+      } else if (polls >= 3 && workflow.profile === "draft") {
+        workflow.currentStage = "export";
+        workflow.progress = 0.75;
+      } else if (polls === 2 && workflow.profile === "delivery") {
+        workflow.currentStage = "analyze";
+        workflow.progress = 0.40;
+        workflow.audioAnalysisJobId = `audio-${workflow.id}`;
+        workflow.transcriptVersionId = "v-auto-transcript";
+      } else if (polls === 3 && workflow.profile === "delivery") {
+        workflow.currentStage = "suggestions";
+        workflow.progress = 0.55;
       } else if (polls === 2) {
         workflow.currentStage = "suggestions";
-        workflow.progress = 0.52;
+        workflow.progress = 0.45;
         workflow.transcriptVersionId = "v-auto-transcript";
       } else if (workflow.translationLanguage) {
         workflow.status = "needs_agent";
         workflow.currentStage = "translate";
-        workflow.progress = 0.58;
+        workflow.progress = workflow.profile === "delivery" ? 0.60 : 0.50;
         workflow.agentTaskId = "t-auto-translate";
       } else {
         workflow.status = "needs_review";
         workflow.currentStage = "review";
-        workflow.progress = 0.68;
+        workflow.progress = workflow.profile === "delivery" ? 0.60 : 0.50;
       }
       workflow.updatedAt = new Date().toISOString();
     }
@@ -1017,7 +1208,7 @@ export async function mockRun(args: string[]): Promise<CoreEnvelope> {
     if (workflow) {
       workflow.status = "running";
       workflow.currentStage = "export";
-      workflow.progress = 0.86;
+      workflow.progress = workflow.profile === "delivery" ? 0.85 : workflow.profile === "draft" ? 0.75 : 0.80;
       workflow.errorMessage = null;
       workflow.attemptCount += 1;
       workflow.updatedAt = new Date().toISOString();
@@ -1039,24 +1230,38 @@ export async function mockRun(args: string[]): Promise<CoreEnvelope> {
     return { apiVersion: "0.1", status: "ok", project: mockProject, workflowId, taskId, message: "工作流已创建，需要 Agent 继续。" };
   }
   if (command === "agent" && subcommand === "health") {
-    return { apiVersion: "0.1", status: "ok", codex: { available: true, authenticated: true, version: "codex-cli 0.144.5", authMode: "chatgpt" }, message: "Codex CLI 已就绪。" };
+    const unavailable = typeof window !== "undefined" && window.localStorage.getItem("siaocut.mock.codexUnavailable") === "true";
+    if (unavailable) {
+      return { apiVersion: "0.1", status: "ok", codex: { available: false, authenticated: false, version: null, authMode: null }, message: "Codex CLI 未安装。" };
+    }
+    return { apiVersion: "0.1", status: "ok", codex: { available: true, authenticated: true, version: "codex-cli 0.145.0", authMode: "chatgpt" }, message: "Codex CLI 已就绪。" };
   }
   if (command === "agent" && subcommand === "start") {
     const task = mockProject.tasks.find((candidate) => candidate.id === args[2]);
     if (!task) return { apiVersion: "0.1", status: "error", error: { code: "invalid_request", message: "Agent 任务不存在。" } };
     const now = new Date().toISOString();
+    const executionKind = valueAfter("--execution") === "api" ? "api" : "codex";
     const run: AgentRun = {
       id: `agent-run-${mockAgentRuns.size + 1}`,
       taskId: task.id,
       projectId: mockProject.id,
-      provider: "codex-cli",
+      provider: executionKind === "api" ? "preview-api" : "codex-cli",
+      executionKind,
+      serviceConfigId: valueAfter("--service-config-id"),
+      serviceRevision: valueAfter("--service-revision") ? Number(valueAfter("--service-revision")) : null,
+      networkRevision: valueAfter("--network-revision") ? Number(valueAfter("--network-revision")) : null,
+      providerId: executionKind === "api" ? "preview-api" : "codex",
+      modelId: valueAfter("--model-id"),
+      providerRequestId: null,
+      usage: null,
+      retryCount: 0,
       status: "running",
       baseVersionId: mockProject.history.currentVersionId ?? mockProject.versions.at(-1)?.id ?? "v1",
       progress: 0.08,
       currentBatch: 1,
       batchCount: 1,
       timeoutSeconds: Number(valueAfter("--timeout-seconds") ?? 900),
-      cliVersion: "codex-cli 0.144.5",
+      cliVersion: "codex-cli 0.145.0",
       authMode: "chatgpt",
       codexThreadId: null,
       cancelRequestedAt: null,
@@ -1068,7 +1273,7 @@ export async function mockRun(args: string[]): Promise<CoreEnvelope> {
       completedAt: null,
       workerPid: 2468,
       attemptCount: 1,
-      batches: [{ id: `agent-batch-${mockAgentRuns.size + 1}`, ordinal: 0, status: "running", segmentIds: mockProject.transcript.segments.map((segment) => segment.id), codexThreadId: null, errorCode: null, errorMessage: null, startedAt: now, completedAt: null, attemptCount: 1 }],
+      batches: [{ id: `agent-batch-${mockAgentRuns.size + 1}`, ordinal: 0, status: "running", segmentIds: mockProject.transcript.segments.map((segment) => segment.id), codexThreadId: null, providerRequestId: null, usage: null, retryCount: 0, errorCode: null, errorMessage: null, startedAt: now, completedAt: null, attemptCount: 1 }],
     };
     task.status = "running";
     task.progress = run.progress;
@@ -1107,7 +1312,7 @@ export async function mockRun(args: string[]): Promise<CoreEnvelope> {
             status: "pending_review",
             baseVersionId: run.baseVersionId,
             createdAt: now,
-            items: [{ id: `patch-item-${run.id}`, segmentId: segment.id, target: "transcript", beforeText: segment.text, afterText: `${segment.text}（已润色）`, currentText: segment.text, reason: "本机 Codex 提供的待审建议", confidence: 0.9, status: "pending" }],
+            items: [{ id: `patch-item-${run.id}`, segmentId: segment.id, target: "transcript", beforeText: segment.text, afterText: `${segment.text}（已润色）`, currentText: segment.text, reason: executionKindReason(run.executionKind), confidence: 0.9, status: "pending" }],
           });
         }
         syncMockProject(mockProject);
@@ -1180,10 +1385,62 @@ export async function mockRun(args: string[]): Promise<CoreEnvelope> {
     if (set) set.status = status;
     return { apiVersion: "0.1", status: "ok", project: mockProject };
   }
+  if (command === "task" && subcommand === "claim") {
+    const task = mockProject.tasks.find((item) => item.id === args[2]);
+    const worker = valueAfter("--worker");
+    const requestedLeaseId = valueAfter("--lease-id");
+    if (!task || !worker) return { apiVersion: "0.1", status: "error", error: { code: "invalid_request", message: "Agent 任务或 worker 不存在。" } };
+    const reusing = ["claimed", "running"].includes(task.status);
+    if (reusing && (task.lease?.worker !== worker || task.lease?.id !== requestedLeaseId)) {
+      return { apiVersion: "0.1", status: "error", error: { code: "task_lease_mismatch", message: "当前任务租约已失效。" } };
+    }
+    if (!reusing) {
+      const attemptCount = (task.attemptCount ?? 0) + 1;
+      const createdAt = new Date().toISOString();
+      task.status = "claimed";
+      task.attemptCount = attemptCount;
+      task.lease = {
+        worker,
+        id: `mock-lease-${task.id}-${attemptCount}`,
+        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+      };
+      task.lastActivity = { kind: "claimed", progress: null, message: "Agent 已领取任务", createdAt };
+    }
+    syncMockProject(mockProject);
+    return { apiVersion: "0.1", status: "ok", task: structuredClone(task), leaseId: task.lease?.id, claimReused: reusing };
+  }
+  if (command === "task" && subcommand === "fail") {
+    const task = mockProject.tasks.find((item) => item.id === args[2]);
+    const worker = valueAfter("--worker");
+    const leaseId = valueAfter("--lease-id");
+    if (!task || !["claimed", "running"].includes(task.status) || task.lease?.worker !== worker || task.lease?.id !== leaseId) {
+      return { apiVersion: "0.1", status: "error", error: { code: "task_lease_mismatch", message: "当前任务租约已失效。" } };
+    }
+    const message = valueAfter("--message") ?? "Agent 处理失败";
+    const createdAt = new Date().toISOString();
+    task.status = "failed";
+    task.errorMessage = message;
+    task.lease = null;
+    task.lastActivity = { kind: "failed", progress: null, message, createdAt };
+    syncMockProject(mockProject);
+    return { apiVersion: "0.1", status: "ok", task: structuredClone(task) };
+  }
   if (command === "task" && ["retry", "cancel"].includes(subcommand)) {
     const task = mockProject.tasks.find((item) => item.id === args[2]);
-    if (task) task.status = subcommand === "retry" ? "queued" : "cancelled";
-    return { apiVersion: "0.1", status: "ok", project: mockProject };
+    if (!task) return { apiVersion: "0.1", status: "error", error: { code: "invalid_request", message: "Agent 任务不存在。" } };
+    const createdAt = new Date().toISOString();
+    task.status = subcommand === "retry" ? "queued" : "cancelled";
+    task.progress = 0;
+    task.errorMessage = null;
+    task.lease = null;
+    task.lastActivity = {
+      kind: subcommand === "retry" ? "queued" : "cancelled",
+      progress: subcommand === "retry" ? 0 : null,
+      message: subcommand === "retry" ? "任务已重新排队" : "任务已取消",
+      createdAt,
+    };
+    syncMockProject(mockProject);
+    return { apiVersion: "0.1", status: "ok", task: structuredClone(task), project: structuredClone(mockProject) };
   }
   return {
     apiVersion: "0.1",

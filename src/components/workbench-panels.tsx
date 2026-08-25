@@ -3,7 +3,7 @@ import { Activity, Check, CircleAlert, Clock3, Cpu, Database, Download, FileVide
 import { getUiLocale, tr } from "../i18n";
 import type { AudioAnalysisJob, AudioRisk, ModelDownloadJob, ModelStatus, Project, RuntimeInfo, Segment, SpeakerIdentity, SpeakerJob, SpeakerPackageStatus, SpeakerTrack, SpeechEvidence, SpeechInsights, SpeechPause, TranscriptionProviderConfig, TranscriptionProviderHealth, TranscriptionReviewItem, UpdateMetadata, UpdatePolicy } from "../types";
 import { JobFailureDetails } from "./job-failure";
-import { audioRiskLabel, audioUnitLabel, formatBytes, formatTime, modelDescription, modelName, patchReasonLabel, type SegmentSelectionMode } from "../app-view-model";
+import { audioRiskLabel, audioUnitLabel, formatBytes, formatTime, modelDescription, modelName, patchReasonLabel, speakerStageLabel, type SegmentSelectionMode } from "../app-view-model";
 export function SpeechInsightsPanel({ insights, onLocateEvidence, onLocatePause }: {
     insights: SpeechInsights;
     onLocateEvidence: (evidence: SpeechEvidence) => void;
@@ -81,7 +81,7 @@ export function SpeakerTrackPanel({ packageStatus, track, job, selectedSegmentId
       <p className="speech-empty">{tr("app.s0563")}</p>
       <button className="audio-analysis-action" disabled={disabled} onClick={onAnalyze}>{tr("app.s0546")}</button>
     </>}
-    {active && <div className="audio-analysis-progress"><span><LoaderCircle className="spin" size={13}/>{job.stage} · {Math.round(job.progress * 100)}%</span><progress max={1} value={job.progress}/><button disabled={disabled} onClick={onCancel}>{tr("app.s0511")}</button></div>}
+    {active && <div className="audio-analysis-progress"><span><LoaderCircle className="spin" size={13}/>{speakerStageLabel(job.stage)} · {Math.round(job.progress * 100)}%</span><progress max={1} value={job.progress}/><button disabled={disabled} onClick={onCancel}>{tr("app.s0511")}</button></div>}
     {resumable && <div className="audio-analysis-error"><JobFailureDetails context="speaker" status={job.status} errorCode={job.errorCode} errorMessage={job.errorMessage}/><button disabled={disabled} onClick={onResume}><RefreshCw size={12}/>{tr("app.s0279")}</button></div>}
     {track?.status === "no_speech" && <><p className="speech-empty">{tr("app.s0565")}</p><button className="audio-analysis-action quiet" disabled={disabled} onClick={onAnalyze}>{tr("app.s0557")}</button></>}
     {track?.status === "ready" && <>
@@ -154,7 +154,7 @@ export function TranscriptionReviewPanel({ items, disabled, onLocate, onResolve 
     if (!items.length) return null;
     return <section className="moss-review-list" aria-label={tr("app.moss.review.title")}>
       <header><strong>{tr("app.moss.review.title")}</strong><small>{items.length}</small></header>
-      {items.map((item) => <article className={`review-item moss-review ${item.severity}`} key={item.id}>
+      {items.map((item) => <article className={`review-item moss-review ${item.severity}`} key={item.id} data-review-detail-id={`transcription:${item.id}`} tabIndex={-1}>
         <span className={`review-tag ${item.severity}`}><CircleAlert size={12}/>{item.kind === "rapid_speaker_switch" ? tr("app.moss.review.rapidSwitch") : item.kind === "short_fragment" ? tr("app.moss.review.shortFragment") : tr("app.moss.review.punctuation")}</span>
         <p>{item.message}</p>
         <div className="patch-actions">{item.segmentId && <button disabled={disabled} onClick={() => onLocate(item.segmentId!)}>{tr("app.moss.review.locate")}</button>}<span/><button disabled={disabled} onClick={() => onResolve(item.id, "ignored")}>{tr("app.moss.review.ignore")}</button><button className="apply" disabled={disabled} onClick={() => onResolve(item.id, "resolved")}>{tr("app.moss.review.resolved")}</button></div>
@@ -176,22 +176,29 @@ export function PatchReviewCard({ item, onReview, onSelect }: {
       <p className="proposed"><small>{tr("app.s0579")}</small>{item.target === "cut" && !item.afterText ? tr("app.s0580") : item.afterText}</p>
     </div>
     <p className="patch-meta">{item.confidence == null ? tr("app.s0581") : tr("app.s0582", { "0": Math.round(item.confidence * 100) })}</p>
-    <div className="patch-actions"><button onClick={onSelect}>{tr("app.s0303")}</button><span /><button onClick={() => onReview("keep")}>{tr("app.s0583")}</button><button className="apply" data-tour="agent-apply" onClick={() => onReview("apply")}>{tr("app.s0584")}</button></div>
+    {conflict && <p className="patch-conflict-help">{tr("app.agent.conflictRegenerate")}</p>}
+    <div className="patch-actions"><button onClick={onSelect}>{tr("app.s0303")}</button><span /><button onClick={() => onReview("keep")}>{tr("app.s0583")}</button>{!conflict && <button className="apply" data-tour="agent-apply" onClick={() => onReview("apply")}>{tr("app.s0584")}</button>}</div>
   </article>;
 }
-export function RuntimeChecklist({ runtime, modelPath, onChooseModel, compact = false }: {
+export function RuntimeChecklist({ runtime, modelPath, modelAvailable = Boolean(modelPath), onChooseModel, compact = false }: {
     runtime: RuntimeInfo | null;
     modelPath: string | null;
+    modelAvailable?: boolean;
     onChooseModel: () => void;
     compact?: boolean;
 }) {
+    const vadDetail = runtime?.vadConfigured
+        ? runtime.vadTimelineVerified
+            ? ` · ${tr("app.runtime.vadVerified")}`
+            : ` · ${tr("app.runtime.vadSafeFallback")}`
+        : "";
     const items = [
         { icon: Database, label: "Core", ok: Boolean(runtime), detail: runtime ? `API ${runtime.coreApiVersion}` : tr("app.s0585") },
         { icon: HardDrive, label: "FFmpeg", ok: runtime?.ffmpegConfigured ?? false, detail: runtime?.ffmpegConfigured ? tr("app.s0586") : tr("app.s0587") },
-        { icon: Cpu, label: "whisper.cpp", ok: runtime?.asrConfigured ?? false, detail: runtime?.asrConfigured ? `${runtime.asrBackend.toUpperCase()}${runtime.asrDevice ? ` · ${runtime.asrDevice}` : ""}${runtime.vadConfigured ? " · VAD" : ""}` : tr("app.s0587") },
+        { icon: Cpu, label: "whisper.cpp", ok: runtime?.asrConfigured ?? false, detail: runtime?.asrConfigured ? `${runtime.asrBackend.toUpperCase()}${runtime.asrDevice ? ` · ${runtime.asrDevice}` : ""}${vadDetail}` : tr("app.s0587") },
         { icon: Download, label: tr("app.s0513"), ok: runtime?.ytDlpConfigured ?? false, detail: runtime?.ytDlpConfigured ? "yt-dlp 2026.06.09" : tr("app.s0587") },
     ];
-    const modelName = modelPath ? modelPath.split(/[\\/]/).pop() : tr("app.s0468");
+    const modelName = modelPath ? `${modelPath.split(/[\\/]/).pop()}${modelAvailable ? "" : ` · ${tr("app.s0590")}`}` : tr("app.s0468");
     if (compact)
         return <div className="runtime-checklist compact" aria-label={tr("app.s0588")}>
     <div className="runtime-components">
@@ -255,6 +262,7 @@ export function ModelManager({ models, selectedPath, job, onSelect, onInstall, o
     onCancel: () => void;
     onRemove: (modelId: string) => void;
 }) {
+    const [removeCandidate, setRemoveCandidate] = useState<string | null>(null);
     const formatSize = (bytes: number) => `${Math.round(bytes / 1024 / 1024)} MB`;
     return <section className="model-manager">
     <div className="model-heading"><span><strong>{tr("app.s0609")}</strong><small>{tr("app.s0610")}</small></span><ShieldCheck size={17}/></div>
@@ -269,8 +277,12 @@ export function ModelManager({ models, selectedPath, job, onSelect, onInstall, o
         {downloading && <div className="model-progress"><span style={{ width: `${Math.max(2, currentJob.progress * 100)}%` }}/><small>{Math.round(currentJob.progress * 100)}% · {formatSize(currentJob.bytesDownloaded)} / {formatSize(currentJob.totalBytes)}</small></div>}
         {currentJob && ["cancelled", "failed", "interrupted"].includes(currentJob.status) && <JobFailureDetails context="model" status={currentJob.status} errorCode={currentJob.errorCode} errorMessage={currentJob.errorMessage}/>}
         <div className="model-actions">
-          {downloading ? <button onClick={onCancel}>{tr("app.s0614")}</button> : model.installed ? <><button className="primary" onClick={() => onSelect(model.path)}>{selected ? tr("app.s0615") : tr("app.s0616")}</button><button onClick={() => onRemove(model.id)}>{tr("app.s0617")}</button></> : <button className="primary" onClick={() => onInstall(model.id)}><Download size={13}/>{tr("app.s0618")}</button>}
+          {downloading ? <button onClick={onCancel}>{tr("app.s0614")}</button> : model.installed ? <><button className="primary" disabled={model.verified !== true} onClick={() => onSelect(model.path)}>{selected ? tr("app.s0615") : tr("app.s0616")}</button><button onClick={() => setRemoveCandidate(model.id)}>{tr("app.s0617")}</button></> : <button className="primary" onClick={() => onInstall(model.id)}><Download size={13}/>{tr("app.s0618")}</button>}
         </div>
+        {removeCandidate === model.id && <div className="model-remove-confirm" role="alertdialog" aria-label={tr("app.model.removeAction")}>
+          <p>{tr("app.model.removeConfirm", { name: modelName(model) })}</p>
+          <div><button onClick={() => setRemoveCandidate(null)}>{tr("app.model.removeCancel")}</button><button className="danger" onClick={() => { setRemoveCandidate(null); onRemove(model.id); }}>{tr("app.model.removeAction")}</button></div>
+        </div>}
       </article>;
         })}</div>
     <p className="runtime-disclosure">{tr("app.s0619")}</p>
@@ -291,34 +303,43 @@ export function SpeakerPackageManager({ packageStatus, job, disabled, onInstall,
     <p>{packageStatus ? tr("app.speaker.packageDescription") : tr("app.s0624")}</p>
     {packageStatus && <div className="speaker-package-summary"><span><strong>{formatBytes(packageStatus.downloadSize)}</strong><small>{tr("app.s0625")}</small></span><span><strong>{packageStatus.license}</strong><small>{tr("app.s0626")}</small></span><span className={packageStatus.verified === true ? "verified" : "optional"}>{packageStatus.verified === true ? <Check size={13}/> : <ShieldCheck size={13}/>}{packageStatus.verified === true ? tr("app.s0627") : tr("app.s0628")}</span></div>}
     {packageStatus && <details><summary>{tr("app.s0629") + " "}{packageStatus.assets.length}{tr("app.s0630")}</summary><div className="speaker-asset-list">{packageStatus.assets.map((asset) => <article key={asset.id}><span><strong>{asset.name}</strong><small>{formatBytes(asset.size)} · {asset.license}</small></span><small title={asset.source}>{asset.source.replace(/^https?:\/\//, "")}</small><code title={asset.sha256}>SHA-256 {asset.sha256.slice(0, 12)}…</code></article>)}</div></details>}
-    {active && <div className="model-progress"><span style={{ width: `${Math.max(2, job.progress * 100)}%` }}/><small>{job.stage} · {Math.round(job.progress * 100)}% · {formatBytes(job.bytesDownloaded)} / {formatBytes(job.totalBytes)}</small></div>}
+    {active && <div className="model-progress"><span style={{ width: `${Math.max(2, job.progress * 100)}%` }}/><small>{speakerStageLabel(job.stage)} · {Math.round(job.progress * 100)}% · {formatBytes(job.bytesDownloaded)} / {formatBytes(job.totalBytes)}</small></div>}
     {resumable && <JobFailureDetails className="speaker-package-error" context="speaker" status={job.status} errorCode={job.errorCode} errorMessage={job.errorMessage}/>}
     <div className="model-actions">{active ? <button disabled={disabled} onClick={onCancel}>{tr("app.s0530")}</button> : resumable ? <button disabled={disabled} onClick={onResume}><RefreshCw size={13}/>{tr("app.s0279")}</button> : packageStatus?.installed && packageStatus.verified === true ? <span className="speaker-package-ready"><Check size={13}/>{tr("app.s0631")}</span> : <button className="primary" disabled={disabled || !packageStatus} onClick={onInstall}><Download size={13}/>{tr("app.s0632")}</button>}</div>
     <p className="runtime-disclosure">{tr("app.s0633")}</p>
   </section>;
 }
-export function SegmentRow({ segment, speaker, speakerManual, selected, active, translation, onSelect, onSave, onSplitAt, onMergePrevious }: {
+export function SegmentRow({ segment, speaker, speakerManual, selected, active, translation, translationLanguage, onSelect, onSave, onSaveTranslation, onSplitAt, onMergePrevious }: {
     segment: Segment;
     speaker?: SpeakerIdentity;
     speakerManual?: boolean;
     selected: boolean;
     active: boolean;
     translation?: Project["translations"][string];
+    translationLanguage?: string;
     onSelect: (mode: SegmentSelectionMode) => void;
     onSave: (text: string) => void;
+    onSaveTranslation?: (text: string) => void;
     onSplitAt: (text: string, offset: number) => void;
     onMergePrevious: (text: string) => void;
 }) {
     const [draft, setDraft] = useState(segment.text);
+    const translatedSegment = translation?.segments.find((item) => item.segmentId === segment.id);
+    const translated = translatedSegment?.text;
+    const [translationDraft, setTranslationDraft] = useState(translated ?? "");
     const rowRef = useRef<HTMLElement>(null);
     const suppressBlurSaveRef = useRef(false);
     useEffect(() => setDraft(segment.text), [segment.text]);
+    useEffect(() => setTranslationDraft(translated ?? ""), [translated]);
     useEffect(() => {
         if (active && typeof rowRef.current?.scrollIntoView === "function")
             rowRef.current.scrollIntoView({ block: "nearest" });
     }, [active]);
-    const translatedSegment = translation?.segments.find((item) => item.segmentId === segment.id);
-    const translated = translatedSegment?.text;
+    const saveTranslation = () => {
+        const next = translationDraft.trim();
+        if (translatedSegment && onSaveTranslation && next && next !== translated)
+            onSaveTranslation(next);
+    };
     return <article ref={rowRef} className={`segment-row ${selected ? "selected" : ""} ${active ? "active" : ""}`} data-segment-id={segment.id} aria-label={tr("app.s0634", { "0": formatTime(segment.start), "1": formatTime(segment.end) })} onClick={(event) => onSelect(event.shiftKey ? "range" : event.ctrlKey || event.metaKey ? "toggle" : "replace")}>
     <input className="segment-select" type="checkbox" aria-label={tr("app.s0635", { "0": formatTime(segment.start), "1": formatTime(segment.end) })} checked={selected} onClick={(event) => { event.stopPropagation(); onSelect(event.shiftKey ? "range" : "toggle"); }} onChange={() => undefined}/>
     <button className="segment-time" aria-label={tr("app.s0636", { "0": formatTime(segment.start) })}>{formatTime(segment.start)}{speaker && <small><i className={`speaker-color speaker-${speaker.colorIndex % 6}`}/>{speaker.label}{speakerManual ? tr("app.s0637") : ""}</small>}</button>
@@ -350,7 +371,7 @@ export function SegmentRow({ segment, speaker, speakerManual, selected, active, 
             suppressBlurSaveRef.current = true;
             onMergePrevious(draft);
         }
-    }} onClick={(event) => event.stopPropagation()} aria-label={tr("app.s0638", { "0": formatTime(segment.start) })} title={tr("app.s0639")}/><p className={translatedSegment?.status !== "current" ? "translation stale" : "translation"}>{translated ?? ""}{translatedSegment?.status === "stale" && <small>{tr("app.s0373")}</small>}{translatedSegment?.status === "quality_failed" && <small>{tr("app.creator.translation.qualityFailed")}</small>}</p></div>
+    }} onClick={(event) => event.stopPropagation()} aria-label={tr("app.s0638", { "0": formatTime(segment.start) })} title={tr("app.s0639")}/>{translatedSegment && <div className={`translation-editor ${translatedSegment.status}`}><textarea rows={1} value={translationDraft} data-dirty={translationDraft.trim() !== translated} onChange={(event) => setTranslationDraft(event.target.value)} onBlur={saveTranslation} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); saveTranslation(); } }} onClick={(event) => event.stopPropagation()} aria-label={tr("app.creator.translation.edit", { time: formatTime(segment.start), language: translationLanguage?.toUpperCase() ?? "" })}/>{translatedSegment.status === "stale" && <small>{tr("app.s0373")}</small>}{translatedSegment.status === "quality_failed" && <small>{tr("app.creator.translation.qualityFailed")}</small>}</div>}</div>
     <span className={segment.confidence != null && segment.confidence < 0.8 ? "confidence low" : "confidence"}>{segment.confidence == null ? "—" : `${Math.round(segment.confidence * 100)}%`}</span>
   </article>;
 }
