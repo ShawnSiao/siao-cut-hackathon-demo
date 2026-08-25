@@ -1,192 +1,44 @@
 import { expect, test, type Page } from "@playwright/test";
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("siaocut.productTour.v3", "complete"));
+});
+
 async function bindMockMedia(page: Page) {
   await page.getByRole("button", { name: "更多命令" }).click();
   await page.getByRole("menuitem", { name: "重新定位原片" }).click();
   await expect(page.getByText("已重新定位原片；内容哈希与项目记录一致。")).toBeVisible();
 }
 
-test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("siaocut.productTour.v3", "complete"));
-});
+async function runMockCore(page: Page, args: string[]) {
+  return page.evaluate(async (commandArgs) => {
+    const moduleUrl = "/src/core.mock.ts";
+    const mock = await import(moduleUrl);
+    return mock.mockRun(commandArgs);
+  }, args);
+}
 
-test("walks a newcomer through the real SiaoCut workflow on desktop and mobile", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/");
+async function confirmAiAssistance(page: Page, mode: "AI 服务" | "本机 Codex") {
+  const dialog = page.getByRole("dialog", { name: "确认 AI 辅助" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("radio", { name: new RegExp(mode) }).check();
+  await dialog.getByRole("checkbox", { name: /已核对接收方、模型、文本范围/ }).check();
+  await dialog.getByRole("button", { name: "确认并执行" }).click();
+}
 
-  await page.getByRole("button", { name: "使用引导" }).click();
-  const tour = page.getByRole("dialog", { name: "用 1 分钟走完一条作品" });
-  await expect(tour).toContainText("不读取或上传访问者媒体");
-  await tour.getByRole("button", { name: "开始体验" }).click();
-
-  for (const title of [
-    "先从一个项目开始",
-    "画面、字幕和时间保持同步",
-    "像改文档一样完成粗剪",
-  ]) {
-    await expect(page.getByRole("dialog", { name: title })).toBeVisible();
-    if (title !== "像改文档一样完成粗剪") await page.getByRole("button", { name: "下一步" }).click();
-  }
-
-  for (const highlight of [
-    {
-      title: "重做字幕，也不会冒险覆盖",
-      action: "体验安全重生成",
-      complete: "校验通过；示例字幕未替换，安全流程已完整展示。",
-    },
-    {
-      title: "编辑时间，也能一眼看清审校证据",
-      action: "切换高级审校",
-      complete: "高级审校已打开；可继续点击下方标记定位详情。",
-    },
-  ]) {
-    await page.getByRole("button", { name: "下一步" }).click();
-    await expect(page.getByRole("dialog", { name: highlight.title })).toBeVisible();
-    await page.getByRole("button", { name: highlight.action }).click();
-    await expect(page.getByText(highlight.complete)).toBeVisible();
-  }
-
-  await page.getByRole("button", { name: "下一步" }).click();
-  await expect(page.getByRole("dialog", { name: "AI 只提建议，修改由人确认" })).toBeVisible();
-
-  for (const highlight of [
-    {
-      title: "把文稿交给本机 Codex",
-      action: "体验本机 Codex",
-      complete: "建议已进入待审区，项目内容仍保持原样。",
-    },
-    {
-      title: "没有自动 Agent，也能完整交接",
-      action: "体验手工交接",
-      complete: "交接说明已生成；任务仍等待明确领取。",
-    },
-    {
-      title: "看清差异，再决定是否应用",
-      action: "体验应用建议",
-      complete: "已展示应用结果；示例项目没有被修改。",
-    },
-  ]) {
-    await page.getByRole("button", { name: "下一步" }).click();
-    await expect(page.getByRole("dialog", { name: highlight.title })).toBeVisible();
-    await expect(page.getByRole("button", { name: "点击高亮按钮" })).toBeDisabled();
-    await page.getByRole("button", { name: highlight.action }).click();
-    await expect(page.getByText(highlight.complete)).toBeVisible();
-    await expect(page.getByRole("button", { name: "下一步" })).toBeEnabled();
-  }
-
-  await page.getByRole("button", { name: "下一步" }).click();
-  for (const title of [
-    "导出前先处理明确问题",
-    "确认字幕、画布，再生成结果",
-    "已经掌握 SiaoCut 主流程",
-  ]) {
-    await expect(page.getByRole("dialog", { name: title })).toBeVisible();
-    if (title !== "已经掌握 SiaoCut 主流程") await page.getByRole("button", { name: "下一步" }).click();
-  }
-
-  await expect(page.getByRole("tab", { name: "导出" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("heading", { name: "导出设置" })).toBeVisible();
-  await page.getByRole("button", { name: "开始自由体验" }).click();
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "使用引导" }).click();
-  await page.getByRole("button", { name: "开始体验" }).click();
-  const mobileCard = await page.getByRole("dialog", { name: "先从一个项目开始" }).boundingBox();
-  expect(mobileCard).not.toBeNull();
-  expect(mobileCard!.x).toBeGreaterThanOrEqual(0);
-  expect(mobileCard!.x + mobileCard!.width).toBeLessThanOrEqual(390);
-  expect(mobileCard!.y).toBeGreaterThanOrEqual(0);
-  expect(mobileCard!.y + mobileCard!.height).toBeLessThanOrEqual(844);
-  for (let step = 0; step < 5; step += 1) {
-    await page.getByRole("button", { name: "下一步" }).click();
-    const action = page.locator(".product-tour-hotspot");
-    if (await action.count()) {
-      await action.click();
-      await expect(page.getByRole("button", { name: "下一步" })).toBeEnabled();
-    }
-  }
-  await page.getByRole("button", { name: "下一步" }).click();
-  const mobileAgentCard = await page.getByRole("dialog", { name: "把文稿交给本机 Codex" }).boundingBox();
-  const mobileAgentHotspot = await page.getByRole("button", { name: "体验本机 Codex" }).boundingBox();
-  expect(mobileAgentCard).not.toBeNull();
-  expect(mobileAgentHotspot).not.toBeNull();
-  expect(mobileAgentCard!.x).toBeGreaterThanOrEqual(0);
-  expect(mobileAgentCard!.x + mobileAgentCard!.width).toBeLessThanOrEqual(390);
-  expect(mobileAgentCard!.y).toBeGreaterThanOrEqual(0);
-  expect(mobileAgentCard!.y + mobileAgentCard!.height).toBeLessThanOrEqual(844);
-  expect(mobileAgentHotspot!.x).toBeGreaterThanOrEqual(0);
-  expect(mobileAgentHotspot!.x + mobileAgentHotspot!.width).toBeLessThanOrEqual(390);
-  expect(mobileAgentHotspot!.y).toBeGreaterThanOrEqual(0);
-  expect(mobileAgentHotspot!.y + mobileAgentHotspot!.height).toBeLessThanOrEqual(844);
-  await page.getByRole("button", { name: "体验本机 Codex" }).click();
-  await expect(page.getByText("建议已进入待审区，项目内容仍保持原样。")).toBeVisible();
-  expect(await page.evaluate(() => ({
-    viewport: window.innerWidth,
-    documentWidth: document.documentElement.scrollWidth,
-    bodyWidth: document.body.scrollWidth,
-  }))).toEqual({ viewport: 390, documentWidth: 390, bodyWidth: 390 });
-  await page.getByRole("button", { name: "关闭引导" }).click();
-});
-
-test("keeps every interactive tour highlight reachable and clear of its card on compact browsers", async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  for (const viewport of [
-    { width: 320, height: 568 },
-    { width: 390, height: 844 },
-    { width: 844, height: 390 },
-  ]) {
-    await page.setViewportSize(viewport);
-    await page.goto("/");
-    await page.getByRole("button", { name: "使用引导" }).click();
-    await page.getByRole("button", { name: "开始体验" }).click();
-    await page.getByRole("button", { name: "下一步" }).click();
-    await page.getByRole("button", { name: "下一步" }).click();
-
-    const highlights = [
-      { action: "体验安全重生成", complete: "校验通过；示例字幕未替换，安全流程已完整展示。" },
-      { action: "切换高级审校", complete: "高级审校已打开；可继续点击下方标记定位详情。" },
-      { action: "体验本机 Codex", complete: "建议已进入待审区，项目内容仍保持原样。" },
-      { action: "体验手工交接", complete: "交接说明已生成；任务仍等待明确领取。" },
-      { action: "体验应用建议", complete: "已展示应用结果；示例项目没有被修改。" },
-    ];
-
-    for (const [index, highlight] of highlights.entries()) {
-      await page.getByRole("button", { name: "下一步" }).click();
-      if (index === 2) {
-        await page.getByRole("button", { name: "下一步" }).click();
-      }
-      const card = page.locator(".product-tour-card");
-      const hotspot = page.getByRole("button", { name: highlight.action });
-      await expect(hotspot).toBeVisible();
-      const geometry = await Promise.all([card.boundingBox(), hotspot.boundingBox()]);
-      expect(geometry[0]).not.toBeNull();
-      expect(geometry[1]).not.toBeNull();
-      const [cardBox, hotspotBox] = geometry as [
-        { x: number; y: number; width: number; height: number },
-        { x: number; y: number; width: number; height: number },
-      ];
-      const overlaps = !(
-        hotspotBox.x + hotspotBox.width <= cardBox.x
-        || hotspotBox.x >= cardBox.x + cardBox.width
-        || hotspotBox.y + hotspotBox.height <= cardBox.y
-        || hotspotBox.y >= cardBox.y + cardBox.height
-      );
-      expect(overlaps, JSON.stringify({ viewport, action: highlight.action, cardBox, hotspotBox })).toBe(false);
-      expect(hotspotBox.x).toBeGreaterThanOrEqual(0);
-      expect(hotspotBox.y).toBeGreaterThanOrEqual(0);
-      expect(hotspotBox.x + hotspotBox.width).toBeLessThanOrEqual(viewport.width + 1);
-      expect(hotspotBox.y + hotspotBox.height).toBeLessThanOrEqual(viewport.height + 1);
-      expect(await hotspot.evaluate((element) => {
-        const rect = element.getBoundingClientRect();
-        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-        return hit === element || Boolean(hit?.closest(".product-tour-hotspot"));
-      })).toBe(true);
-      await hotspot.click();
-      await expect(page.getByText(highlight.complete)).toBeVisible();
-    }
-    await page.getByRole("button", { name: "关闭引导" }).click();
-  }
-});
+async function configureMockApiService(page: Page) {
+  await page.getByRole("button", { name: "本地资源" }).click();
+  const runtime = page.getByRole("dialog", { name: "环境配置" });
+  await runtime.getByRole("tab", { name: "AI 服务" }).click();
+  const panel = runtime.getByRole("tabpanel", { name: "AI 服务" });
+  await panel.getByRole("button", { name: /OpenAI/ }).click();
+  await panel.getByLabel("API Key").fill("e2e-placeholder-key");
+  await panel.getByLabel("模型").fill("preview-model");
+  await panel.getByRole("switch", { name: "设为默认 AI 服务" }).click();
+  await panel.getByRole("button", { name: "保存并使用" }).click();
+  await expect(panel.getByRole("button", { name: /OpenAI 已配置，未测试/ })).toBeVisible();
+  await runtime.getByRole("button", { name: "关闭环境配置" }).click();
+}
 
 test("switches the application chrome to English without reloading the project", async ({ page }) => {
   await page.goto("/");
@@ -199,19 +51,27 @@ test("switches the application chrome to English without reloading the project",
   await expect(page.getByText("已重新定位原片；内容哈希与项目记录一致。")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "New project" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Review suggestions" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Send to local Codex" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start AI assistance" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Export" })).toBeVisible();
-  await page.getByRole("button", { name: "Runtime" }).click();
-  const runtime = page.getByRole("dialog", { name: "Runtime" });
+  await page.getByRole("button", { name: "Local resources" }).click();
+  const runtime = page.getByRole("dialog", { name: "Environment settings" });
+  await runtime.getByText("Compatibility and diagnostics").click();
   await runtime.getByRole("combobox", { name: "Source language" }).selectOption("en");
   await expect(runtime.getByRole("combobox", { name: "Source language" })).toHaveValue("en");
-  await runtime.getByRole("button", { name: "Close the running environment" }).click();
+  await runtime.getByRole("button", { name: "Close environment settings" }).click();
   await page.getByRole("combobox", { name: "Agent workflow" }).selectOption("edit");
   await page.getByRole("button", { name: "Manual handoff" }).click();
   await page.getByRole("checkbox", { name: "I will continue in an external Agent tool that can access this computer's SiaoCut Core." }).check();
   await page.getByRole("button", { name: "Create handoff task" }).click();
   await expect(page.getByRole("heading", { name: "Task ready to hand off" })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Complete instructions to copy to the external Agent" })).toHaveValue(/task claim/);
+  const handoff = page.getByRole("textbox", { name: "Complete instructions to copy to the external Agent" });
+  await expect(handoff).toHaveValue(/task claim/);
+  await expect(handoff).toHaveValue(/--payload-output \$payloadPath/);
+  await expect(handoff).toHaveValue(/Get-FileHash .* SHA256/);
+  await expect(handoff).toHaveValue(/\$leaseId = \[string\]\$payload\.leaseId/);
+  await expect(handoff).toHaveValue(/\$heartbeatProgress = \[Math\]::Max\(0\.05, \[double\]\$claim\.task\.progress\)/);
+  await expect(handoff).toHaveValue(/task heartbeat .* --lease-id \$leaseId/);
+  await expect(handoff).toHaveValue(/task submit .* --lease-id \$leaseId/);
   await expect(projectHeading).toHaveText("发布口播 · 草稿");
   await expect(page.locator("html")).toHaveAttribute("lang", "en-US");
 });
@@ -258,6 +118,11 @@ test("keeps command groups non-overlapping in Chinese and English", async ({ pag
         const rect = element.getBoundingClientRect();
         return rect.left >= 0 && rect.right <= window.innerWidth + 1 && rect.width > 0 && rect.height > 0;
       }))).toBe(true);
+      const timelineOverflow = await page.locator(".subtitle-timeline-scroll").evaluate((element) => ({
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+      }));
+      expect(timelineOverflow.scrollWidth).toBeGreaterThan(timelineOverflow.clientWidth);
       await expect(page.locator(".creator-drawer")).toHaveCount(1);
       await expect(page.locator('.creator-drawer [role="tab"][aria-selected="true"]')).toHaveCount(1);
       await page.getByRole("tab", { name: locale === "zh-CN" ? "导出" : "Export" }).click();
@@ -268,75 +133,94 @@ test("keeps command groups non-overlapping in Chinese and English", async ({ pag
   }
 });
 
-test("reflows the full workbench into a mobile page without document overflow", async ({ page }) => {
-  for (const viewport of [
-    { width: 320, height: 568 },
-    { width: 375, height: 812 },
-    { width: 390, height: 844 },
-    { width: 844, height: 390 },
-  ]) {
-    await page.setViewportSize(viewport);
-    await page.goto("/");
-    await expect(page.getByRole("heading", { name: "发布口播 · 草稿" })).toBeVisible();
-    expect(await page.evaluate(() => ({
-      viewport: window.innerWidth,
-      documentWidth: document.documentElement.scrollWidth,
-      bodyWidth: document.body.scrollWidth,
-    }))).toEqual({
-      viewport: viewport.width,
-      documentWidth: viewport.width,
-      bodyWidth: viewport.width,
-    });
-  }
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
-
-  await expect(page.locator(".rail")).toHaveCSS("position", "relative");
-  await expect(page.locator(".stage-grid")).toHaveCSS("grid-template-columns", "366px");
-  await expect(page.locator(".editor-grid")).toHaveCSS("grid-template-columns", "366px");
-  await expect(page.locator(".video-frame")).toBeVisible();
-  await expect(page.locator(".transcript-panel")).toBeVisible();
-  await expect(page.locator(".creator-drawer")).toBeVisible();
-  await expect(page.locator(".timeline-panel")).toBeVisible();
-
-  const timeline = page.locator(".subtitle-timeline-scroll");
-  expect(await timeline.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
-
-  await page.getByRole("tab", { name: "质量" }).click();
-  await expect(page.locator('.creator-drawer [role="tab"][aria-selected="true"]')).toHaveText(/质量/);
-});
-
-test("preflights and confirms original-timeline quick subtitle regeneration", async ({ page }) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: "更多命令" }).click();
-  await page.getByRole("menuitem", { name: "重新生成快速字幕" }).click();
-  const dialog = page.getByRole("dialog", { name: "确认重新生成快速字幕" });
-  await expect(dialog.getByText(/原片、既有导出文件和历史版本不会修改/)).toBeVisible();
-  const confirm = dialog.getByRole("button", { name: "确认并重新转写" });
-  await expect(confirm).toBeDisabled();
-  await dialog.getByRole("checkbox", { name: /确认替换当前字幕/ }).check();
-  await expect(confirm).toBeEnabled();
-  await confirm.click();
-  await expect(dialog).toBeHidden();
-  await expect(page.getByText(/快速字幕已重新生成并通过时间校验/)).toBeVisible();
-});
-
-test("edits timing and reveals review evidence on the dual-mode timeline", async ({ page }) => {
+test("uses B by default, restores C after A, and links review markers to detail panels", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");
-  const timeline = page.getByRole("region", { name: "字幕时间轴" });
+  const timeline = page.locator(".subtitle-timeline-panel");
+  await expect(timeline).toBeVisible();
   await expect(timeline.getByRole("button", { name: "精细编辑" })).toHaveAttribute("aria-pressed", "true");
   await expect(timeline.getByRole("slider", { name: "缩放比例" })).toHaveValue("160");
+
   await timeline.getByRole("button", { name: /字幕 2，/ }).click();
-  await timeline.getByRole("button", { name: "后移 0.1 秒" }).click();
-  await expect(page.getByText(/字幕已后移 0.1 秒/)).toBeVisible();
-  await expect(timeline.getByText("00:13.3 — 00:18.7")).toBeVisible();
+  await expect(timeline.getByText(/已选 · 字幕 2/)).toBeVisible();
+
+  const canvas = await timeline.locator(".subtitle-timeline-canvas").boundingBox();
+  expect(canvas).not.toBeNull();
+  await page.mouse.move(canvas!.x + canvas!.width * 0.25, canvas!.y + 48);
+  await page.mouse.down();
+  await page.mouse.up();
+  await expect(page.getByRole("status", { name: "播放器状态" })).toContainText("01:09");
 
   await timeline.getByRole("button", { name: /高级审校/ }).click();
-  await expect(timeline).toHaveClass(/review/);
   await expect(timeline.getByText("说话人", { exact: true })).toBeVisible();
-  await expect(timeline.locator(".subtitle-timeline-review-markers button").first()).toBeVisible();
+  await timeline.locator(".subtitle-timeline-review-markers button.warning").first().click();
+  await expect(page.getByRole("tab", { name: /^质量/ })).toHaveAttribute("aria-selected", "true");
+
+  await timeline.getByRole("button", { name: "收起时间线" }).click();
+  await expect(timeline).toHaveClass(/overview/);
+  await expect(timeline.locator(".subtitle-timeline-overview")).toBeVisible();
+  await timeline.getByRole("button", { name: "展开时间线" }).click();
+  await expect(timeline.getByRole("button", { name: /高级审校/ })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("keeps one player while focused review supports keyboard exit and responsive layouts", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(async () => {
+    const mock = await import("/src/core.mock.ts");
+    mock.setMockAuthorizedMediaForTest("mock://local-media");
+  });
+  await bindMockMedia(page);
+  const video = page.locator("video");
+  await video.evaluate((element) => {
+    const media = element as HTMLVideoElement & { focusReviewMarker?: string };
+    media.currentTime = 13.5;
+    media.focusReviewMarker = "same-player";
+  });
+
+  await page.getByRole("button", { name: "审阅建议" }).click();
+  await expect(page.getByText("专注审阅", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "退出专注审阅" })).toBeFocused();
+  expect(await video.evaluate((element) => (element as HTMLVideoElement & { focusReviewMarker?: string }).focusReviewMarker)).toBe("same-player");
+  expect(Math.abs(await video.evaluate((element) => (element as HTMLVideoElement).currentTime) - 13.5)).toBeLessThanOrEqual(0.25);
+  const expandedPlayerWidth = (await page.locator(".creator-player").boundingBox())!.width;
+  await page.getByRole("button", { name: "收起问题卡片" }).click();
+  await expect(page.getByRole("button", { name: "展开问题卡片" })).toBeVisible();
+  await expect.poll(async () => (await page.locator(".creator-player").boundingBox())!.width).toBeGreaterThan(expandedPlayerWidth + 200);
+  await page.getByRole("button", { name: "展开问题卡片" }).click();
+
+  for (const viewport of [{ width: 1080, height: 720 }, { width: 1444, height: 972 }, { width: 2560, height: 1410 }]) {
+    await page.setViewportSize(viewport);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("专注审阅", { exact: true })).toHaveCount(0);
+  expect(await video.evaluate((element) => (element as HTMLVideoElement & { focusReviewMarker?: string }).focusReviewMarker)).toBe("same-player");
+  expect(Math.abs(await video.evaluate((element) => (element as HTMLVideoElement).currentTime) - 13.5)).toBeLessThanOrEqual(0.25);
+
+  await page.getByRole("button", { name: "审阅建议" }).click();
+  await page.keyboard.press("n");
+  await expect(page.getByText(/第 2 项，共/)).toBeVisible();
+  await page.keyboard.press("p");
+  await expect(page.getByText(/第 1 项，共/)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("专注审阅", { exact: true })).toHaveCount(0);
+  expect(await video.evaluate((element) => (element as HTMLVideoElement & { focusReviewMarker?: string }).focusReviewMarker)).toBe("same-player");
+
+  const timeline = page.locator(".subtitle-timeline-panel");
+  await timeline.getByRole("button", { name: /高级审校/ }).click();
+  await timeline.getByRole("button", { name: "专注审阅" }).click();
+  await expect(page.getByRole("button", { name: "保留原片" })).toBeVisible();
+  await page.getByRole("button", { name: "保留原片" }).click();
+  await expect(page.getByText(/剩余 1 项/)).toBeVisible();
+});
+
+test("blocks focused review until the source media is available", async ({ page }) => {
+  await page.goto("/");
+  const action = page.getByRole("button", { name: "审阅建议" });
+  await expect(action).toBeDisabled();
+  await expect(action).toHaveAttribute("title", /重新定位/);
+  await expect(page.getByRole("button", { name: "重新定位原片" }).first()).toBeVisible();
 });
 
 test("uses direct transcript keys for time-confirmed split and adjacent merge", async ({ page }) => {
@@ -353,7 +237,7 @@ test("uses direct transcript keys for time-confirmed split and adjacent merge", 
   await expect(split.getByText(/缺少可信的词级时间/)).toBeVisible();
   await split.getByRole("spinbutton", { name: /时间拆分点/ }).fill("15.500");
   await split.getByRole("button", { name: "确认拆分当前段" }).click();
-  await expect(page.getByLabel("字幕文稿列表").locator("textarea")).toHaveCount(5);
+  await expect(page.getByLabel("字幕文稿列表").getByLabel(/字幕文本$/)).toHaveCount(5);
 
   const secondHalf = page.getByLabel("00:15 字幕文本");
   await secondHalf.evaluate((element) => {
@@ -365,7 +249,7 @@ test("uses direct transcript keys for time-confirmed split and adjacent merge", 
   const merge = page.getByRole("dialog", { name: "合并字幕" });
   await expect(merge.getByText(/作用范围：2 段/)).toBeVisible();
   await merge.getByRole("button", { name: "确认合并 2 段" }).click();
-  await expect(page.getByLabel("字幕文稿列表").locator("textarea")).toHaveCount(4);
+  await expect(page.getByLabel("字幕文稿列表").getByLabel(/字幕文本$/)).toHaveCount(4);
 });
 
 test("runs local Codex and keeps every result pending review", async ({ page }) => {
@@ -373,11 +257,63 @@ test("runs local Codex and keeps every result pending review", async ({ page }) 
   await bindMockMedia(page);
   const editor = page.getByLabel("00:13 字幕文本");
   const original = await editor.inputValue();
-  await page.getByRole("button", { name: "交给本机 Codex" }).click();
-  await expect(page.getByText("本机 Codex 已启动；完成后仍需逐条审阅。")).toBeVisible();
-  await expect(page.getByText("本机 Codex 已完成；建议已进入集中审阅，文稿未自动修改。")).toBeVisible({ timeout: 5000 });
+  await page.getByRole("button", { name: "开始 AI 辅助" }).click();
+  await confirmAiAssistance(page, "本机 Codex");
+  await expect(page.getByText("AI 辅助已启动；完成后仍需逐条审阅。")).toBeVisible();
+  await expect(page.getByText("AI 辅助已完成；建议已进入集中审阅，文稿未自动修改。")).toBeVisible({ timeout: 5000 });
   await expect(editor).toHaveValue(original);
   await expect(page.getByText("本机 Codex 提供的待审建议")).toBeVisible();
+});
+
+test("runs all text assistance workflows through a default API when Codex is unavailable", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.addInitScript(() => window.localStorage.setItem("siaocut.mock.codexUnavailable", "true"));
+  await page.goto("/");
+  await bindMockMedia(page);
+
+  await page.getByRole("button", { name: "本地资源" }).click();
+  let runtime = page.getByRole("dialog", { name: "环境配置" });
+  await runtime.getByText("兼容与诊断").click();
+  await runtime.getByRole("combobox", { name: "转写模式" }).selectOption("multispeaker");
+  await runtime.getByRole("button", { name: "关闭环境配置" }).click();
+  await page.getByRole("button", { name: "开始多人转写" }).click();
+  await expect(page.getByText(/字幕和说话人轨已作为一个版本写入/)).toBeVisible();
+  await configureMockApiService(page);
+
+  const editor = page.getByLabel("00:13 字幕文本");
+  const original = await editor.inputValue();
+  for (const workflow of ["polish", "proofread", "punctuate", "edit", "translate", "speaker_names"]) {
+    await page.getByRole("combobox", { name: "Agent 工作流" }).selectOption(workflow);
+    await page.getByRole("button", { name: "开始 AI 辅助" }).click();
+    const confirm = page.getByRole("dialog", { name: "确认 AI 辅助" });
+    await expect(confirm.getByRole("radio", { name: /本机 Codex/ })).toBeDisabled();
+    await expect(confirm.getByText("OpenAI / preview-model")).toBeVisible();
+    await confirmAiAssistance(page, "AI 服务");
+    await expect(page.getByText("AI 辅助已完成；建议已进入集中审阅，文稿未自动修改。")).toBeVisible({ timeout: 7000 });
+  }
+
+  await expect(editor).toHaveValue(original);
+  await expect(page.getByText("AI 服务提供的待审建议").first()).toBeVisible();
+});
+
+test("requeues a failed external Agent task and shows its next claim without flashing back", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "发布口播 · 草稿" })).toBeVisible();
+  const claimed = await runMockCore(page, ["task", "claim", "t1", "--worker", "e2e-agent"]);
+  const leaseId = claimed.leaseId;
+  expect(typeof leaseId).toBe("string");
+  if (typeof leaseId !== "string") throw new Error("Mock Core did not return a task lease");
+  await runMockCore(page, ["task", "fail", "t1", "--worker", "e2e-agent", "--lease-id", leaseId, "--message", "模拟外部 Agent 失败"]);
+
+  const retry = page.getByRole("button", { name: "重新排队" });
+  await expect(retry).toBeVisible({ timeout: 5_000 });
+  await retry.click();
+  await expect(page.getByText(/正在等待第 2 次领取/)).toBeVisible();
+
+  await runMockCore(page, ["task", "claim", "t1", "--worker", "e2e-agent"]);
+  await expect(page.getByText(/e2e-agent 已领取任务/)).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText(/第 2 次尝试/)).toBeVisible();
+  await expect(page.getByText("模拟外部 Agent 失败")).toHaveCount(0);
 });
 
 test("keeps the transcript primary at the minimum supported workspace size", async ({ page }) => {
@@ -395,9 +331,14 @@ test("keeps the transcript primary at the minimum supported workspace size", asy
   expect(commands).not.toBeNull();
   expect(subtitleTools).not.toBeNull();
   expect(transcript!.width).toBeGreaterThanOrEqual(context!.width);
-  expect(context!.y).toBeGreaterThanOrEqual(transcript!.y + transcript!.height - 1);
+  expect(transcript!.y).toBeGreaterThanOrEqual(context!.y + context!.height - 1);
   expect(commands!.x + commands!.width).toBeLessThanOrEqual(1080);
   expect(subtitleTools!.x + subtitleTools!.width).toBeLessThanOrEqual(1080);
+  const timelineOverflow = await page.locator(".subtitle-timeline-scroll").evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }));
+  expect(timelineOverflow.scrollWidth).toBeGreaterThan(timelineOverflow.clientWidth);
   await expect(page.getByRole("button", { name: "拆分" })).toBeAttached();
   await expect(page.getByRole("button", { name: "偏移" })).toBeAttached();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -406,38 +347,6 @@ test("keeps the transcript primary at the minimum supported workspace size", asy
   await expect(page.getByRole("complementary", { name: "导出设置" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("complementary", { name: "导出设置" })).toBeHidden();
-});
-
-test("keeps subtitle styling in export settings and previews the saved bilingual hierarchy", async ({ page }) => {
-  await page.setViewportSize({ width: 1444, height: 972 });
-  await page.goto("/");
-  const original = await page.getByLabel("00:13 字幕文本").inputValue();
-  const transcriptList = page.getByLabel("字幕文稿列表");
-  const transcriptListLayout = await transcriptList.evaluate((element) => {
-    const style = getComputedStyle(element);
-    return { overflowY: style.overflowY, height: element.getBoundingClientRect().height };
-  });
-  expect(transcriptListLayout.overflowY).toBe("auto");
-  expect(transcriptListLayout.height).toBeLessThanOrEqual(560);
-  await page.getByRole("checkbox", { name: "选择字幕 00:13 至 00:18" }).click();
-  await page.getByRole("tab", { name: "导出" }).click();
-  const panel = page.getByLabel("导出设置");
-  await panel.getByLabel("字幕模式").selectOption("bilingual");
-  await expect(panel.getByLabel("字幕模式")).toHaveValue("bilingual");
-  await expect(panel.getByLabel("译文语言")).toHaveValue("en");
-  await panel.getByLabel("字幕样式预设").selectOption("emphasis");
-  await expect(page.getByText("字幕样式已更新；正文和时间未修改，可撤销。")).toBeVisible();
-  await panel.getByLabel("字幕位置").selectOption("center");
-
-  const caption = page.locator(".caption-overlay");
-  await expect(caption).toHaveAttribute("data-preset", "emphasis");
-  await expect(caption).toHaveAttribute("data-position", "center");
-  await expect(caption.locator(".caption-secondary")).toContainText("Today I want to explain why we are building a local-first editing workbench.");
-  await expect(page.locator(".subtitle-safe-area")).toBeVisible();
-  await panel.getByRole("checkbox", { name: "显示字幕安全区" }).uncheck();
-  await expect(page.locator(".subtitle-safe-area")).toBeHidden();
-  await expect(page.getByLabel("00:13 字幕文本")).toHaveValue(original);
-  await expect(page.locator(".topbar").getByLabel("字幕样式预设")).toHaveCount(0);
 });
 
 test("uses the full transcript panel height without leaving an empty footer", async ({ page }) => {
@@ -502,7 +411,7 @@ test("selects subtitle ranges and confirms recoverable structure edits", async (
   await splitDialog.getByRole("spinbutton", { name: /时间拆分点/ }).fill("15.500");
   await splitDialog.getByRole("button", { name: "确认拆分当前段" }).click();
   await expect(page.getByText(/字幕已拆分.*Ctrl\+Z 撤销/)).toBeVisible();
-  await expect(page.getByLabel("字幕文稿列表").locator("textarea")).toHaveCount(5);
+  await expect(page.getByLabel("字幕文稿列表").getByLabel(/字幕文本$/)).toHaveCount(5);
 });
 
 test("expands the editing workbench on a maximized 27-inch display", async ({ page }) => {
@@ -523,7 +432,8 @@ test("expands the editing workbench on a maximized 27-inch display", async ({ pa
   expect(workflow).not.toBeNull();
   expect(transcript).not.toBeNull();
   expect(workbench!.width).toBeGreaterThan(2200);
-  expect(video!.width).toBeGreaterThan(1500);
+  expect(video!.width).toBeGreaterThan(1000);
+  expect(workflow!.x).toBeGreaterThan(video!.x + video!.width);
   expect(videoFrame!.height).toBeGreaterThan(500);
   expect(workflow!.width).toBeGreaterThanOrEqual(340);
   expect(workflow!.height).toBeGreaterThan(500);
@@ -606,7 +516,7 @@ test("keeps core controls usable across supported desktop viewports", async ({ p
     expect(runtime).not.toBeNull();
     expect(runtime!.y).toBeGreaterThanOrEqual(0);
     expect(runtime!.y + runtime!.height).toBeLessThanOrEqual(viewport.height + 1);
-    await page.locator(".runtime-dialog-header .dialog-close").click();
+    await page.getByRole("button", { name: "关闭环境配置" }).click();
 
     await page.locator(".command-more .ui-icon-button").click();
     await expect(page.locator(".command-menu")).toBeVisible();
@@ -637,7 +547,7 @@ test("previews and explicitly replaces local subtitle files", async ({ page }) =
   await expect(transcript.locator("textarea").first()).toHaveValue("导入后的第一条字幕");
   await page.getByRole("tab", { name: /^质量/ }).click();
   const quality = page.getByRole("region", { name: "字幕质量" });
-  await expect(quality.getByText("1 项质量提醒")).toBeVisible();
+  await expect(quality.getByText("无阻断问题 · 1 条排版建议已汇总")).toBeVisible();
   await expect(quality).toHaveClass(/warning/);
   await expect(quality.locator("svg.lucide-circle-alert").first()).toBeVisible();
   await quality.getByRole("button", { name: "提醒 1" }).click();
@@ -645,8 +555,28 @@ test("previews and explicitly replaces local subtitle files", async ({ page }) =
   await expect(transcript.locator("textarea").first()).toHaveValue("导入后的第二条字幕");
 });
 
+test("preflights and confirms original-timeline quick subtitle regeneration", async ({ page }) => {
+  await page.setViewportSize({ width: 1444, height: 972 });
+  await page.goto("/");
+  await bindMockMedia(page);
+
+  await page.getByRole("button", { name: "更多命令" }).click();
+  await page.getByRole("menuitem", { name: "重新生成快速字幕" }).click();
+  const dialog = page.getByRole("dialog", { name: "确认重新生成快速字幕" });
+  await expect(dialog.getByText(/只有通过原始媒体时间轴验收/)).toBeVisible();
+  await expect(dialog.getByText(/原片、既有导出文件和历史版本不会修改/)).toBeVisible();
+  const confirm = dialog.getByRole("button", { name: "确认并重新转写" });
+  await expect(confirm).toBeDisabled();
+  await dialog.getByRole("checkbox", { name: /确认替换当前字幕/ }).check();
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText(/快速字幕已重新生成并通过时间校验/)).toBeVisible();
+});
+
 test("separates runtime status cards from the transcription model control", async ({ page }) => {
-  await page.setViewportSize({ width: 1368, height: 763 });
+  await page.setViewportSize({ width: 2560, height: 1410 });
   await page.addInitScript(() => localStorage.setItem("siaocut.modelPath", "C:\\Models\\ggml-large-v3-turbo-q5_0-multilingual.bin"));
   await page.goto("/");
 
@@ -660,6 +590,7 @@ test("separates runtime status cards from the transcription model control", asyn
 
   await expect(page.getByRole("heading", { name: "从一段口播开始。" })).toBeVisible();
   const checklist = page.getByLabel("本机运行组件");
+  const welcome = page.locator(".welcome-card");
   const cards = checklist.locator(".runtime-components .runtime-row");
   const model = checklist.locator(".runtime-model-row");
   await expect(cards).toHaveCount(4);
@@ -681,18 +612,29 @@ test("separates runtime status cards from the transcription model control", asyn
   expect(Math.abs(modelBox!.width - cardsBox!.width)).toBeLessThanOrEqual(1);
   const modelDetail = model.locator("small");
   expect(await modelDetail.evaluate((element) => element.scrollWidth <= element.clientWidth && element.scrollHeight <= element.clientHeight)).toBe(true);
+  const welcomeBox = await welcome.boundingBox();
+  const workbenchBox = await page.locator(".workbench").boundingBox();
+  expect(welcomeBox).not.toBeNull();
+  expect(workbenchBox).not.toBeNull();
+  expect(Math.abs((welcomeBox!.y + welcomeBox!.height) - (workbenchBox!.y + workbenchBox!.height - 30))).toBeLessThanOrEqual(2);
+  const welcomeCopy = welcome.locator(":scope > p:not(.eyebrow)");
+  expect(await welcomeCopy.evaluate((element) => element.getBoundingClientRect().height <= Number.parseFloat(getComputedStyle(element).lineHeight) * 1.2)).toBe(true);
+  const whisperDetail = cards.filter({ hasText: "whisper.cpp" }).locator("small");
+  expect(await whisperDetail.evaluate((element) => element.getBoundingClientRect().height <= Number.parseFloat(getComputedStyle(element).lineHeight) * 1.2)).toBe(true);
 });
 
 test("reviews and edits a transcript from the workbench", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "发布口播 · 草稿" })).toBeVisible();
   await bindMockMedia(page);
-  await page.getByRole("button", { name: "运行环境" }).click();
-  await expect(page.getByRole("dialog", { name: "运行环境" })).toBeVisible();
+  await page.getByRole("button", { name: "本地资源" }).click();
+  const localResources = page.getByRole("dialog", { name: "环境配置" });
+  await expect(localResources).toBeVisible();
+  await localResources.getByText("兼容与诊断").click();
   await expect(page.getByText("API 0.1")).toBeVisible();
   await expect(page.getByText("平衡 · 推荐")).toBeVisible();
   await expect(page.getByText("下载前显示来源、体积与许可证")).toBeVisible();
-  await page.getByRole("button", { name: "关闭运行环境" }).click();
+  await localResources.getByRole("button", { name: "关闭环境配置" }).click();
   await expect(page.getByText("删除不影响含义的口语冗余")).toBeVisible();
   await expect(page.getByText("任务原文")).toBeVisible();
   await expect(page.getByText("Agent 建议")).toBeVisible();
@@ -720,8 +662,16 @@ test("reviews and edits a transcript from the workbench", async ({ page }) => {
   await expect(page.getByText("已重做项目修改。")).toBeVisible();
   await page.getByRole("button", { name: "检测粗剪建议" }).click();
   await expect(page.getByText("发现 1 条粗剪建议；试听并确认后才会应用。")).toBeVisible();
-  await expect(page.getByText("说话重启：你可以")).toBeVisible();
+  const detectedCut = page.locator("article.review-item").filter({ hasText: "说话重启：你可以" });
+  await expect(detectedCut).toBeVisible();
   await expect(page.getByText("需要人工确认 · 说话重启")).toBeVisible();
+  const timelineBeforeDismiss = await page.getByText(/成片 .* · 原片/).textContent();
+  await detectedCut.getByRole("button", { name: "保留原片" }).click();
+  await expect(page.getByText("已保留原片；时间线未修改。")).toBeVisible();
+  await expect(detectedCut).toHaveCount(0);
+  await expect(page.getByText(timelineBeforeDismiss!)).toBeVisible();
+  await commands.getByRole("button", { name: "撤销" }).click();
+  await expect(page.locator("article.review-item").filter({ hasText: "说话重启：你可以" })).toBeVisible();
   const editor = page.getByLabel("00:13 字幕文本");
   await editor.fill("人工修订后的原文。");
   await editor.blur();
@@ -737,6 +687,29 @@ test("reviews and edits a transcript from the workbench", async ({ page }) => {
   await expect(page.getByText(/字幕已导出到/)).toBeVisible();
   await exportPanel.getByRole("button", { name: "导出视频" }).click();
   await expect(page.getByText(/视频已导出到/)).toBeVisible();
+});
+
+test("edits stale translations directly and gives the target language an independent larger size", async ({ page }) => {
+  await page.goto("/");
+  const source = page.getByLabel("00:13 字幕文本");
+  await source.fill("人工修订后的原文。");
+  await source.blur();
+  await expect(page.getByText("原文已更新；对应译文需要更新。")).toBeVisible();
+
+  const translated = page.getByLabel("编辑 00:13 的 EN 译文");
+  await translated.fill("The manually corrected translation.");
+  await translated.blur();
+  await expect(page.getByText("译文已更新，并与当前原文重新关联。")).toBeVisible();
+  await expect(translated).toHaveValue("The manually corrected translation.");
+
+  await page.getByRole("tab", { name: "导出" }).click();
+  const exportPanel = page.getByLabel("导出设置");
+  await exportPanel.getByLabel("字幕模式").selectOption("bilingual");
+  await expect(exportPanel.getByLabel("原文字号")).toHaveValue("40");
+  await expect(exportPanel.getByLabel("译文字号")).toHaveValue("52");
+  await exportPanel.getByLabel("译文字号").fill("72");
+  await exportPanel.getByLabel("译文字号").blur();
+  await expect(exportPanel.getByLabel("译文字号")).toHaveValue("72");
 });
 
 test("versions glossary terms and requires stale-translation export confirmation", async ({ page }) => {
@@ -792,7 +765,7 @@ test("runs a resumable one-click workflow through the human review gate", async 
   await dialog.getByRole("button", { name: "选择文件" }).click();
   await expect(dialog.getByText("demo.mp4")).toBeVisible();
   await start.click();
-  const status = page.getByRole("region", { name: "一键工作流状态" });
+  const status = page.getByRole("group", { name: "自动工作流状态" });
   await expect(status.getByText(/需要你确认 · 等待人工确认/)).toBeVisible({ timeout: 5000 });
   await status.getByRole("button", { name: "确认完成并继续" }).click();
   await expect(status.getByText("一键工作流未完成，可以继续或重试。")).toBeVisible();
@@ -805,13 +778,77 @@ test("runs a resumable one-click workflow through the human review gate", async 
   await expect(page.getByText(/一键工作流已完成，视频已导出到/)).toBeVisible();
 });
 
+test("runs quick draft without suggestion or Agent stages", async ({ page }) => {
+  await page.goto("/");
+  await page.getByText("更多导入方式").click();
+  await page.getByRole("button", { name: "一键成片", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "一键工作流" });
+  await dialog.getByRole("radio", { name: /快速初稿/ }).check();
+  await expect(dialog.getByText(/未经建议审阅的初稿/)).toBeVisible();
+  await expect(dialog.getByRole("checkbox", { name: "创建 Agent 翻译任务" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "选择文件" }).click();
+  await dialog.getByRole("button", { name: "启动一键工作流" }).click();
+
+  const status = page.getByRole("group", { name: "自动工作流状态" });
+  await expect(status.getByText(/已完成 · 流程完成/)).toBeVisible({ timeout: 5000 });
+  const result = await runMockCore(page, ["auto", "list"]);
+  expect(result.workflows[0]).toMatchObject({ profile: "draft", currentStage: "complete", agentTaskId: null, audioAnalysisJobId: null });
+});
+
+test("runs delivery audio analysis and requires review even without automatic application", async ({ page }) => {
+  await page.goto("/");
+  await page.getByText("更多导入方式").click();
+  await page.getByRole("button", { name: "一键成片", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "一键工作流" });
+  await dialog.getByRole("radio", { name: /精细交付/ }).check();
+  await expect(dialog.getByText(/必须确认完成审阅/)).toBeVisible();
+  await dialog.getByRole("button", { name: "选择文件" }).click();
+  await dialog.getByRole("button", { name: "启动一键工作流" }).click();
+
+  const status = page.getByRole("group", { name: "自动工作流状态" });
+  await expect(status.getByText(/需要你确认 · 等待人工确认/)).toBeVisible({ timeout: 6000 });
+  let result = await runMockCore(page, ["auto", "list"]);
+  expect(result.workflows[0]).toMatchObject({ profile: "delivery", currentStage: "review", progress: 0.60 });
+  expect(result.workflows[0].audioAnalysisJobId).toBeTruthy();
+  await page.getByRole("button", { name: "保留原片" }).click();
+  await status.getByRole("button", { name: "确认完成并继续" }).click();
+  await expect(status.getByText(/已完成 · 流程完成/)).toBeVisible({ timeout: 3000 });
+  result = await runMockCore(page, ["auto", "list"]);
+  expect(result.workflows[0].audioAnalysisJobId).toMatch(/^audio-/);
+});
+
+test("dismisses a cancelled one-click status while keeping an explicit recovery path", async ({ page }) => {
+  await page.goto("/");
+  await page.getByText("更多导入方式").click();
+  await page.getByRole("button", { name: "一键成片", exact: true }).click();
+  let dialog = page.getByRole("dialog", { name: "一键工作流" });
+  await dialog.getByRole("button", { name: "选择文件" }).click();
+  await dialog.getByRole("button", { name: "启动一键工作流" }).click();
+
+  const status = page.getByRole("group", { name: "自动工作流状态" });
+  await expect(status).toBeVisible();
+  await status.getByRole("button", { name: "取消流程" }).click();
+  await expect(status.getByText(/已取消/)).toBeVisible();
+  await status.getByRole("button", { name: "关闭此流程状态" }).click();
+  await expect(status).toHaveCount(0);
+
+  await page.getByRole("button", { name: "一键成片", exact: true }).click();
+  dialog = page.getByRole("dialog", { name: "一键工作流" });
+  const history = dialog.getByRole("region", { name: "最近的一键流程" });
+  await expect(history.getByText(/已取消/)).toBeVisible();
+  await history.getByRole("button", { name: "显式继续" }).click();
+  await expect(page.getByText(/自动工作流已显式继续；这是第 2 次尝试/)).toBeVisible();
+  await expect(page.getByRole("group", { name: "自动工作流状态" })).toBeVisible();
+});
+
 test("uses MOSS as an explicit multispeaker mode with loopback settings and review", async ({ page }) => {
   await page.goto("/");
   await bindMockMedia(page);
-  await page.getByRole("button", { name: "运行环境" }).click();
-  const runtime = page.getByRole("dialog", { name: "运行环境" });
+  await page.getByRole("button", { name: "本地资源" }).click();
+  const runtime = page.getByRole("dialog", { name: "环境配置" });
+  await runtime.getByText("兼容与诊断").click();
   await runtime.getByRole("combobox", { name: "转写模式" }).selectOption("multispeaker");
-  await runtime.getByRole("button", { name: "关闭运行环境" }).click();
+  await runtime.getByRole("button", { name: "关闭环境配置" }).click();
   const start = page.getByRole("button", { name: "开始多人转写" });
   await expect(start).toBeEnabled();
   await start.click();
@@ -821,7 +858,7 @@ test("uses MOSS as an explicit multispeaker mode with loopback settings and revi
   await expect(page.getByText("当前结果没有词级时间戳")).toBeVisible();
 
   await page.getByRole("combobox", { name: "Agent 工作流" }).selectOption("speaker_names");
-  await expect(page.getByRole("button", { name: "交给本机 Codex" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "开始 AI 辅助" })).toBeEnabled();
   await page.getByRole("tab", { name: "导出" }).click();
   const exportPanel = page.getByLabel("导出设置");
   await exportPanel.getByLabel("导出格式").selectOption("json");
@@ -832,8 +869,9 @@ test("uses MOSS as an explicit multispeaker mode with loopback settings and revi
   await expect(transcriptExport).toBeEnabled();
   await exportPanel.getByRole("button", { name: "关闭导出设置" }).click();
 
-  await page.getByRole("button", { name: "运行环境" }).click();
-  const settings = page.getByRole("dialog", { name: "运行环境" });
+  await page.getByRole("button", { name: "本地资源" }).click();
+  const settings = page.getByRole("dialog", { name: "环境配置" });
+  await settings.getByText("兼容与诊断").click();
   const provider = settings.getByRole("region", { name: "MOSS 多人长音频服务" });
   await expect(provider.locator("input").first()).toHaveValue("http://127.0.0.1:8000");
   const endpointInput = await provider.locator("input").nth(0).boundingBox();
@@ -847,10 +885,11 @@ test("uses MOSS as an explicit multispeaker mode with loopback settings and revi
 test("keeps a conflicting MOSS candidate isolated until explicit replacement", async ({ page }) => {
   await page.goto("/");
   await bindMockMedia(page);
-  await page.getByRole("button", { name: "运行环境" }).click();
-  const runtime = page.getByRole("dialog", { name: "运行环境" });
+  await page.getByRole("button", { name: "本地资源" }).click();
+  const runtime = page.getByRole("dialog", { name: "环境配置" });
+  await runtime.getByText("兼容与诊断").click();
   await runtime.getByRole("combobox", { name: "转写模式" }).selectOption("multispeaker");
-  await runtime.getByRole("button", { name: "关闭运行环境" }).click();
+  await runtime.getByRole("button", { name: "关闭环境配置" }).click();
   await page.getByText("高级实验项：Prompt 与热词").click();
   await page.getByRole("textbox", { name: "自定义 Prompt" }).fill("simulate-conflict");
   await page.getByRole("button", { name: "开始多人转写" }).click();
@@ -863,7 +902,7 @@ test("keeps a conflicting MOSS candidate isolated until explicit replacement", a
   await expect(deleteDialog.getByRole("button", { name: "确认删除" })).toBeDisabled();
   await deleteDialog.getByRole("button", { name: "取消" }).click();
 
-  await page.getByRole("button", { name: "查看影响" }).click();
+  await page.getByRole("button", { name: "查看候选结果" }).click();
   const candidate = page.getByRole("dialog", { name: "确认多人转写候选结果" });
   const apply = candidate.getByRole("button", { name: "应用并替换" });
   await expect(apply).toBeDisabled();

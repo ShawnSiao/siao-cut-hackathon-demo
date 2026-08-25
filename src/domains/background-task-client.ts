@@ -1,6 +1,7 @@
-import { runCore } from "../core";
+import { runCore, runCoreStructured } from "../core";
 import type { UiLocale } from "../i18n";
-import type { TranscriptionLanguage } from "../types";
+import type { TranscriptionLanguage, WorkflowProfile } from "../types";
+import type { AiExecutionSelection } from "../features/ai-assistance/types";
 
 type AutoWorkflowInput =
   | { kind: "local"; mediaPath: string; title: string }
@@ -13,8 +14,10 @@ type StartAutoWorkflowOptions = {
   locale: UiLocale;
   output: string;
   subtitleMode: "source" | "translated" | "bilingual";
+  profile: WorkflowProfile;
   translationLanguage?: string;
   burnSubtitles: boolean;
+  aiExecution?: AiExecutionSelection;
 };
 
 type StartTranscriptionOptions = {
@@ -51,7 +54,18 @@ export const backgroundTaskClient = {
       "--locale", options.locale,
       "--output", options.output,
       "--subtitle-mode", options.subtitleMode,
+      "--profile", options.profile,
       ...(options.translationLanguage ? ["--translate", options.translationLanguage] : []),
+      ...(options.aiExecution && options.aiExecution.kind !== "copy_prompt" ? [
+        "--ai-execution", options.aiExecution.kind,
+        ...(options.aiExecution.kind === "api" ? [
+          "--ai-service-config-id", options.aiExecution.serviceConfigId,
+          "--ai-service-revision", String(options.aiExecution.serviceRevision),
+          "--ai-network-revision", String(options.aiExecution.networkRevision),
+          "--ai-model-id", options.aiExecution.modelId,
+        ] : []),
+        "--confirm-ai-text-send",
+      ] : []),
       ...(options.burnSubtitles ? ["--burn-subtitles"] : []),
     ]);
   },
@@ -77,12 +91,13 @@ export const backgroundTaskClient = {
   latestTranscription: (projectId: string) => runCore(["transcription", "latest", projectId]),
   listTranscriptionReviews: (projectId: string) => runCore(["transcription", "review", projectId]),
   getTranscriptionJob: (jobId: string) => runCore(["transcription", "status", jobId]),
-  startTranscription: (options: StartTranscriptionOptions) => runCore([
-    "transcription", "start", options.projectId,
-    "--language", options.language,
-    ...(options.prompt ? ["--prompt", options.prompt] : []),
-    ...options.hotwords.flatMap((hotword) => ["--hotword", hotword]),
-  ]),
+  startTranscription: (options: StartTranscriptionOptions) => runCoreStructured({
+    kind: "transcription_start",
+    projectId: options.projectId,
+    language: options.language,
+    prompt: options.prompt,
+    hotwords: options.hotwords,
+  }),
   configureTranscription: (endpoint: string, modelId: string) => runCore(["transcription", "configure", "--endpoint", endpoint, "--model", modelId]),
   cancelTranscription: (jobId: string) => runCore(["transcription", "cancel", jobId]),
   resumeTranscription: (jobId: string) => runCore(["transcription", "resume", jobId]),

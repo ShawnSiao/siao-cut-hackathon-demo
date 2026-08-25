@@ -1,5 +1,5 @@
-import type { AgentRunStatus, AutoWorkflowStage, AutoWorkflowStatus, BackgroundJobStatus, CoreErrorCode, TaskStatus, TranscriptionJobStatus, WorkflowStatus } from "./generated/core-contract";
-export type { AgentRunStatus, AutoWorkflowStage, AutoWorkflowStatus, BackgroundJobStatus, CoreErrorCode, KnownCoreErrorCode, TaskStatus, TranscriptionJobStatus, WorkflowStatus } from "./generated/core-contract";
+import type { AgentRunStatus, AutoWorkflowStage, AutoWorkflowStatus, BackgroundJobStatus, CoreErrorCode, LocalResourceState, TaskStatus, TranscriptionJobStage, TranscriptionJobStatus, WorkflowProfile, WorkflowStatus } from "./generated/core-contract";
+export type { AgentRunStatus, AutoWorkflowStage, AutoWorkflowStatus, BackgroundJobStatus, CoreErrorCode, KnownCoreErrorCode, LocalResourceState, TaskStatus, TranscriptionJobStage, TranscriptionJobStatus, WorkflowProfile, WorkflowStatus } from "./generated/core-contract";
 
 export type Segment = {
   id: string;
@@ -22,6 +22,9 @@ export type AgentRunBatch = {
   status: AgentRunStatus;
   segmentIds: string[];
   codexThreadId: string | null;
+  providerRequestId: string | null;
+  usage: unknown | null;
+  retryCount: number;
   errorCode: string | null;
   errorMessage: string | null;
   startedAt: string | null;
@@ -34,6 +37,15 @@ export type AgentRun = {
   taskId: string;
   projectId: string;
   provider: string;
+  executionKind: "codex" | "api";
+  serviceConfigId: string | null;
+  serviceRevision: number | null;
+  networkRevision: number | null;
+  providerId: string | null;
+  modelId: string | null;
+  providerRequestId: string | null;
+  usage: unknown | null;
+  retryCount: number;
   status: AgentRunStatus;
   baseVersionId: string;
   progress: number;
@@ -138,6 +150,10 @@ export type Task = {
   progress: number;
   errorMessage: string | null;
   errorCode?: CoreErrorCode | null;
+  attemptCount?: number;
+  completedAt?: string | null;
+  cancelRequestedAt?: string | null;
+  baseVersionId?: string | null;
   workflowId?: string | null;
   instructionLocale: UiLocale;
 };
@@ -236,6 +252,7 @@ export type ExportJob = {
   stageCode?: string | null;
   progress: number;
   burnSubtitles: boolean;
+  subtitleDelivery: "none" | "burned" | "embedded-mp4" | "embedded-mkv" | "sidecar-srt" | "sidecar-vtt";
   language: string | null;
   bilingual: boolean;
   subtitleMode: "source" | "translated" | "bilingual";
@@ -315,6 +332,56 @@ export type ModelDownloadJob = {
   updatedAt: string;
   completedAt: string | null;
   workerPid?: number | null;
+};
+
+export type LocalCapabilityId = "basic_media" | "url_import" | "local_transcription" | "speaker_identity";
+export type LocalTranscriptionProfile = "fast" | "standard" | "quality";
+
+export type LocalCapabilityStatus = {
+  id: LocalCapabilityId;
+  name: string;
+  state: LocalResourceState;
+  enabled: boolean;
+  canRollback?: boolean;
+};
+
+export type LocalResourceStatus = {
+  configured: boolean;
+  root: string | null;
+  rootAvailable: boolean;
+  writable: boolean;
+  availableBytes: number | null;
+  transcriptionProfile: LocalTranscriptionProfile;
+  capabilities: LocalCapabilityStatus[];
+  needsSetup: boolean;
+};
+
+export type LocalResourcePlan = {
+  capabilityId: LocalCapabilityId;
+  capabilityName: string;
+  transcriptionProfile: LocalTranscriptionProfile | null;
+  downloadBytes: number;
+  unknownSize: boolean;
+};
+
+export type LocalResourceJob = {
+  id: string;
+  capabilityId: LocalCapabilityId;
+  transcriptionProfile?: LocalTranscriptionProfile | null;
+  status: BackgroundJobStatus;
+  stage: string;
+  progress: number;
+  bytesDownloaded: number;
+  totalBytes: number;
+  targetRoot: string;
+  cancelRequestedAt: string | null;
+  errorMessage: string | null;
+  errorCode?: CoreErrorCode | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  workerPid?: number | null;
+  attemptCount: number;
 };
 
 export type SourcePreview = {
@@ -508,12 +575,20 @@ export type AutoWorkflow = {
   outputPath: string;
   burnSubtitles: boolean;
   subtitleMode: "source" | "translated" | "bilingual";
+  profile: WorkflowProfile;
   status: AutoWorkflowStatus;
   currentStage: AutoWorkflowStage;
   stageCode?: string | null;
   progress: number;
   transcriptVersionId: string | null;
   agentTaskId: string | null;
+  audioAnalysisJobId: string | null;
+  aiExecutionKind: "codex" | "api" | null;
+  aiServiceConfigId: string | null;
+  aiServiceRevision: number | null;
+  aiNetworkRevision: number | null;
+  aiModelId: string | null;
+  aiAuthorized: boolean;
   exportJobId: string | null;
   audit: Record<string, unknown> | null;
   cancelRequestedAt: string | null;
@@ -553,7 +628,7 @@ export type TranscriptionJob = {
   prompt: string | null;
   hotwords: string[];
   status: TranscriptionJobStatus;
-  stage: string;
+  stage: TranscriptionJobStage | string;
   resultRunId: string | null;
   baseVersionId: string | null;
   sourceSha256: string | null;
@@ -582,6 +657,7 @@ export type TranscriptionCandidateSummary = {
 
 export type ProjectDeletionPreflight = {
   projectId: string;
+  expectedVersionId: string;
   deletable: boolean;
   blockers: Array<{ kind: string; id: string; status: string }>;
 };
@@ -671,6 +747,7 @@ export type SubtitleImportPreview = {
   format: "srt" | "vtt" | "ass";
   sourcePath: string;
   sha256: string;
+  expectedVersionId: string;
   segmentCount: number;
   segments: Segment[];
   quality: SubtitleQualityReport;
@@ -724,6 +801,7 @@ export type CoreEnvelope = {
   code?: CoreErrorCode;
   message?: string;
   taskId?: string;
+  task?: Task | null;
   agentRunId?: string;
   codex?: CodexHealth;
   agentRun?: AgentRun;
@@ -736,6 +814,10 @@ export type CoreEnvelope = {
   model?: ModelStatus;
   modelJob?: ModelDownloadJob;
   modelJobs?: ModelDownloadJob[];
+  localResources?: LocalResourceStatus;
+  resourcePlan?: LocalResourcePlan;
+  resourceJob?: LocalResourceJob;
+  resourceJobs?: LocalResourceJob[];
   source?: SourcePreview;
   sourceJob?: SourceImportJob;
   sourceJobs?: SourceImportJob[];
@@ -781,6 +863,9 @@ export type RuntimeInfo = {
   ffmpegConfigured: boolean;
   asrConfigured: boolean;
   vadConfigured: boolean;
+  vadTimelineVerified: boolean;
+  vadStatus: "verified" | "safe_fallback" | "not_configured";
+  vadReasonCode: string | null;
   ytDlpConfigured: boolean;
   asrBackend: string;
   asrDevice: string | null;
