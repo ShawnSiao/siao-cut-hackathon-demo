@@ -1,5 +1,5 @@
 import { sampleProject } from "./mock";
-import type { AgentRun, AudioAnalysisJob, AutoWorkflow, CoreEnvelope, ExportJob, LocalCapabilityId, LocalResourceJob, LocalResourceStatus, LocalTranscriptionProfile, ModelDownloadJob, ModelStatus, Project, RuntimeInfo, SourceImportJob, SourcePreview, SpeakerJob, SpeakerPackageStatus, SpeakerTrack, SubtitleImportPreview, SubtitleStructureEdit, TranscriptionJob, TranscriptionProviderConfig, TranscriptionProviderHealth, TranscriptionReviewItem, UpdateDownloadEvent, UpdateMetadata, UpdatePolicy } from "./types";
+import type { AgentRun, AudioAnalysisJob, AutoWorkflow, CoreEnvelope, ExportJob, LocalCapabilityId, LocalResourceJob, LocalResourceStatus, LocalTranscriptionProfile, ModelDownloadJob, ModelStatus, Project, ResourceUpdateCheck, RuntimeInfo, SourceImportJob, SourcePreview, SpeakerJob, SpeakerPackageStatus, SpeakerTrack, SubtitleImportPreview, SubtitleStructureEdit, TranscriptionJob, TranscriptionProviderConfig, TranscriptionProviderHealth, TranscriptionReviewItem, UpdateDownloadEvent, UpdateMetadata, UpdatePolicy } from "./types";
 
 const isTauri = () => "__TAURI_INTERNALS__" in window;
 const mockSubtitleStylePresets = [
@@ -10,10 +10,10 @@ const mockSubtitleStylePresets = [
 
 const resolveMockSubtitleStyle = (preset: Project["subtitleStyle"]["preset"], position: Project["subtitleStyle"]["position"]): Project["subtitleStyle"] => {
   const sizes = preset === "compact"
-    ? { fontSize: 32, secondaryFontSize: 42, outlineWidth: 2, shadowDepth: 1, safeMarginPercent: 3 }
+    ? { fontSize: 32, secondaryFontSize: 42, outlineWidth: 2, shadowDepth: 1, safeMarginPercent: 3, boxWidthPercent: 92, boxHeightLines: 4 }
     : preset === "emphasis"
-      ? { fontSize: 46, secondaryFontSize: 60, outlineWidth: 4, shadowDepth: 2, safeMarginPercent: 5 }
-      : { fontSize: 40, secondaryFontSize: 52, outlineWidth: 3, shadowDepth: 1, safeMarginPercent: 4 };
+      ? { fontSize: 46, secondaryFontSize: 60, outlineWidth: 4, shadowDepth: 2, safeMarginPercent: 5, boxWidthPercent: 92, boxHeightLines: 4 }
+      : { fontSize: 40, secondaryFontSize: 52, outlineWidth: 3, shadowDepth: 1, safeMarginPercent: 4, boxWidthPercent: 92, boxHeightLines: 4 };
   return {
     preset,
     position,
@@ -197,8 +197,8 @@ const mockSourcePreview: SourcePreview = {
   fileSizeBytes: 12075092,
   fileSizeKnown: false,
   thumbnailUrl: null,
-  toolVersion: "2026.06.09",
-  toolSha256: "3a48cb955d55c8821b60ccbdbbc6f61bc958f2f3d3b7ad5eaf3d83a543293a27",
+  toolVersion: "2026.08.19",
+  toolSha256: "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a",
   requiresConfirmation: true,
 };
 const mockSubtitlePreview: SubtitleImportPreview = {
@@ -339,6 +339,18 @@ export async function mockRun(args: string[]): Promise<CoreEnvelope> {
     if (!root) throw new Error("resource_setup_required: 请先选择本地资源保存位置");
     mockLocalResources = { ...mockLocalResources, configured: true, root, rootAvailable: true, writable: true, needsSetup: false };
     return { apiVersion: "0.1", status: "ok", localResources: structuredClone(mockLocalResources) };
+  }
+  if (command === "resources" && subcommand === "check-updates") {
+    const selected = args[2] as LocalCapabilityId | undefined;
+    const capabilities: ResourceUpdateCheck["capabilities"] = mockLocalResources.capabilities
+      .filter((capability) => !selected || capability.id === selected)
+      .map((capability) => ({ capabilityId: capability.id, state: capability.state === "ready" ? "current" : capability.state }));
+    return {
+      apiVersion: "0.1",
+      status: "ok",
+      localResources: structuredClone(mockLocalResources),
+      resourceUpdateCheck: { checkedAt: new Date().toISOString(), capabilities },
+    };
   }
   if (command === "resources" && subcommand === "migrate") {
     const root = valueAfter("--root");
@@ -535,11 +547,15 @@ export async function mockRun(args: string[]): Promise<CoreEnvelope> {
     const position = args[args.indexOf("--position") + 1] as Project["subtitleStyle"]["position"];
     const sourceFontSize = valueAfter("--source-font-size");
     const translationFontSize = valueAfter("--translation-font-size");
+    const boxWidthPercent = valueAfter("--box-width-percent");
+    const boxHeightLines = valueAfter("--box-height-lines");
     recordMockSnapshot();
     mockProject.subtitleStyle = {
       ...resolveMockSubtitleStyle(preset, position),
       ...(sourceFontSize == null ? {} : { fontSize: Number(sourceFontSize) }),
       ...(translationFontSize == null ? {} : { secondaryFontSize: Number(translationFontSize) }),
+      ...(boxWidthPercent == null ? {} : { boxWidthPercent: Number(boxWidthPercent) }),
+      ...(boxHeightLines == null ? {} : { boxHeightLines: Number(boxHeightLines) }),
     };
     const versionId = `v${mockProject.versions.length + 1}`;
     mockProject.versions.push({ id: versionId, reason: "更新字幕样式", createdAt: new Date().toISOString() });

@@ -4,10 +4,10 @@ import { createPortal } from "react-dom";
 import { tr } from "../i18n";
 import { Button } from "./ui";
 
-export const PRODUCT_TOUR_STORAGE_KEY = "siaocut.productTour.v3";
+export const PRODUCT_TOUR_STORAGE_KEY = "siaocut.productTour.v4";
 
-type ProductTourStepId = "welcome" | "project" | "player" | "transcript" | "quickRetranscribe" | "timeline" | "review" | "agent" | "handoff" | "apply" | "quality" | "export" | "complete";
-type ProductTourDemoKind = "quickRetranscribe" | "timeline" | "agent" | "handoff" | "apply";
+type ProductTourStepId = "welcome" | "project" | "resourceUpdates" | "player" | "transcript" | "quickRetranscribe" | "timeline" | "review" | "agent" | "handoff" | "apply" | "quality" | "subtitleBox" | "export" | "complete";
+type ProductTourDemoKind = "resourceUpdates" | "quickRetranscribe" | "timeline" | "agent" | "handoff" | "apply" | "subtitleBox";
 type ProductTourDemoState = "idle" | "running" | "complete";
 
 type ProductTourStep = {
@@ -36,6 +36,15 @@ const PRODUCT_TOUR_STEPS: ProductTourStep[] = [
     title: "app.tour.project.title",
     body: "app.tour.project.body",
     hint: "app.tour.project.hint",
+  },
+  {
+    id: "resourceUpdates",
+    target: '[data-tour="resource-updates"]',
+    eyebrow: "app.tour.resourceUpdates.eyebrow",
+    title: "app.tour.resourceUpdates.title",
+    body: "app.tour.resourceUpdates.body",
+    hint: "app.tour.resourceUpdates.hint",
+    demo: "resourceUpdates",
   },
   {
     id: "player",
@@ -115,6 +124,15 @@ const PRODUCT_TOUR_STEPS: ProductTourStep[] = [
     hint: "app.tour.quality.hint",
   },
   {
+    id: "subtitleBox",
+    target: '[data-tour="subtitle-box"]',
+    eyebrow: "app.tour.subtitleBox.eyebrow",
+    title: "app.tour.subtitleBox.title",
+    body: "app.tour.subtitleBox.body",
+    hint: "app.tour.subtitleBox.hint",
+    demo: "subtitleBox",
+  },
+  {
     id: "export",
     target: '[data-tour="export"]',
     eyebrow: "app.tour.export.eyebrow",
@@ -163,6 +181,18 @@ function rememberProductTour() {
 
 function ProductTourDemo({ kind, state }: { kind: ProductTourDemoKind; state: ProductTourDemoState }) {
   const statusKey = `app.tour.${kind}.demo.${state}` as Parameters<typeof tr>[0];
+  if (kind === "resourceUpdates") {
+    return <section className="product-tour-demo" data-kind={kind} data-state={state} aria-label={tr("app.tour.resourceUpdates.demo.label")}>
+      <div className="product-tour-demo-flow" aria-hidden="true">
+        <span><RefreshCw size={15}/><small>{tr("app.tour.resourceUpdates.demo.check")}</small></span>
+        <i><ArrowRight size={13}/></i>
+        <span><ShieldCheck size={15}/><small>{tr("app.tour.resourceUpdates.demo.compatible")}</small></span>
+        <i><ArrowRight size={13}/></i>
+        <span><Check size={15}/><small>{tr("app.tour.resourceUpdates.demo.current")}</small></span>
+      </div>
+      <p role="status" aria-live="polite">{tr(statusKey)}</p>
+    </section>;
+  }
   if (kind === "quickRetranscribe") {
     return <section className="product-tour-demo" data-kind={kind} data-state={state} aria-label={tr("app.tour.quickRetranscribe.demo.label")}>
       <div className="product-tour-demo-flow" aria-hidden="true">
@@ -207,6 +237,18 @@ function ProductTourDemo({ kind, state }: { kind: ProductTourDemoKind; state: Pr
         <span><Copy size={15} /><small>{tr("app.tour.handoff.demo.claim")}</small></span>
         <i><ArrowRight size={13} /></i>
         <span><GitCompareArrows size={15} /><small>{tr("app.tour.handoff.demo.diff")}</small></span>
+      </div>
+      <p role="status" aria-live="polite">{tr(statusKey)}</p>
+    </section>;
+  }
+  if (kind === "subtitleBox") {
+    return <section className="product-tour-demo" data-kind={kind} data-state={state} aria-label={tr("app.tour.subtitleBox.demo.label")}>
+      <div className="product-tour-demo-flow" aria-hidden="true">
+        <span><MoveHorizontal size={15}/><small>{tr("app.tour.subtitleBox.demo.width")}</small></span>
+        <i><ArrowRight size={13}/></i>
+        <span><FileText size={15}/><small>{tr("app.tour.subtitleBox.demo.lines")}</small></span>
+        <i><ArrowRight size={13}/></i>
+        <span><Check size={15}/><small>{tr("app.tour.subtitleBox.demo.fullText")}</small></span>
       </div>
       <p role="status" aria-live="polite">{tr(statusKey)}</p>
     </section>;
@@ -275,6 +317,9 @@ export function ProductTour({ onStepChange }: ProductTourProps) {
     if (step.demo === "timeline" && step.target) {
       document.querySelector<HTMLButtonElement>(step.target)?.click();
     }
+    if (step.demo === "resourceUpdates" && step.target) {
+      document.querySelector<HTMLElement>(step.target)?.querySelector<HTMLButtonElement>("button")?.click();
+    }
     setDemoState("running");
     const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     demoTimerRef.current = window.setTimeout(() => {
@@ -302,17 +347,29 @@ export function ProductTour({ onStepChange }: ProductTourProps) {
     let frame = 0;
     let secondFrame = 0;
     let resizeObserver: ResizeObserver | null = null;
+    let mutationObserver: MutationObserver | null = null;
     let target = step.target ? document.querySelector<HTMLElement>(step.target) : null;
+    let targetScrolled = Boolean(target);
     const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
     const measure = () => {
-      if (!target && step.target) {
+      if ((!target || !target.isConnected) && step.target) {
         target = document.querySelector<HTMLElement>(step.target);
+        targetScrolled = false;
       }
       if (!target) {
         setHighlight(null);
         setCardPosition({});
         return;
+      }
+      if (!targetScrolled) {
+        targetScrolled = true;
+        target.scrollIntoView?.({
+          behavior: "auto",
+          block: window.innerWidth <= 700 ? "start" : "center",
+          inline: "nearest",
+        });
+        window.requestAnimationFrame(measure);
       }
 
       const rect = target.getBoundingClientRect();
@@ -377,11 +434,16 @@ export function ProductTour({ onStepChange }: ProductTourProps) {
     });
     window.addEventListener("resize", measure);
     window.addEventListener("scroll", measure, true);
+    if (step.target && typeof MutationObserver !== "undefined") {
+      mutationObserver = new MutationObserver(measure);
+      mutationObserver.observe(document.body, { childList: true, subtree: true });
+    }
 
     return () => {
       window.cancelAnimationFrame(frame);
       window.cancelAnimationFrame(secondFrame);
       resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, true);
     };

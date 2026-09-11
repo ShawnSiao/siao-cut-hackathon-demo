@@ -290,6 +290,8 @@ export type SubtitleStyle = {
   outlineWidth: number;
   shadowDepth: number;
   safeMarginPercent: number;
+  boxWidthPercent: number;
+  boxHeightLines: number;
 };
 
 export type SubtitleStylePresetOption = {
@@ -354,6 +356,14 @@ export type LocalResourceStatus = {
   transcriptionProfile: LocalTranscriptionProfile;
   capabilities: LocalCapabilityStatus[];
   needsSetup: boolean;
+};
+
+export type ResourceUpdateCheck = {
+  checkedAt: string;
+  capabilities: Array<{
+    capabilityId: LocalCapabilityId;
+    state: "current" | LocalResourceState;
+  }>;
 };
 
 export type LocalResourcePlan = {
@@ -818,6 +828,7 @@ export type CoreEnvelope = {
   resourcePlan?: LocalResourcePlan;
   resourceJob?: LocalResourceJob;
   resourceJobs?: LocalResourceJob[];
+  resourceUpdateCheck?: ResourceUpdateCheck;
   source?: SourcePreview;
   sourceJob?: SourceImportJob;
   sourceJobs?: SourceImportJob[];

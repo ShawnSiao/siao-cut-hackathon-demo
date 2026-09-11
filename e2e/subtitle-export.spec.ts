@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("siaocut.productTour.v3", "complete"));
+  await page.addInitScript(() => localStorage.setItem("siaocut.productTour.v4", "complete"));
 });
 
 test("previews burned subtitles and exposes embedded or sidecar delivery", async ({ page }) => {
