@@ -371,6 +371,7 @@ function WorkbenchController() {
     });
     const handleProductTourStepChange = useCallback((step: string) => {
         setShowMoreMenu(step === "quickRetranscribe");
+        setShowRuntime(step === "resourceUpdates");
         if (focusReview)
             exitFocusReview(false);
         if (step === "player")
@@ -383,7 +384,7 @@ function WorkbenchController() {
             setDrawerTab("quality");
             setShowExportPanel(false);
         }
-        if (step === "export") {
+        if (step === "subtitleBox" || step === "export") {
             setDrawerTab("export");
             setShowExportPanel(true);
         }
@@ -1071,6 +1072,9 @@ function WorkbenchController() {
         fontSize: `${Math.max(14, Math.round(project.subtitleStyle.fontSize * 0.36))}px`,
         fontWeight: project.subtitleStyle.bold ? 700 : 400,
         bottom: project.subtitleStyle.position === "bottom" ? `${project.subtitleStyle.safeMarginPercent}%` : undefined,
+        left: `${(100 - project.subtitleStyle.boxWidthPercent) / 2}%`,
+        right: `${(100 - project.subtitleStyle.boxWidthPercent) / 2}%`,
+        maxHeight: `${Math.round(Math.max(project.subtitleStyle.fontSize, captionSecondaryText ? project.subtitleStyle.secondaryFontSize : 0) * 0.36 * 1.35 * project.subtitleStyle.boxHeightLines + (captionSecondaryText ? 3 : 0))}px`,
         textShadow: `0 ${project.subtitleStyle.shadowDepth}px ${Math.max(1, project.subtitleStyle.shadowDepth * 2)}px ${project.subtitleStyle.outlineColor}, 0 0 ${project.subtitleStyle.outlineWidth * 2}px ${project.subtitleStyle.outlineColor}`,
     } : undefined;
     const captionPrimaryStyle = project && subtitleMode === "translated"
@@ -2427,8 +2431,8 @@ function WorkbenchController() {
             }
         });
     };
-    const changeSubtitleStyle = (preset: Project["subtitleStyle"]["preset"], position: Project["subtitleStyle"]["position"], sourceFontSize?: number, translationFontSize?: number) => project && withBusy(tr("app.s0181"), async () => {
-        const envelope = await transcriptEditingClient.setSubtitleStyle(project.id, preset, position, sourceFontSize, translationFontSize);
+    const changeSubtitleStyle = (preset: Project["subtitleStyle"]["preset"], position: Project["subtitleStyle"]["position"], sourceFontSize?: number, translationFontSize?: number, boxWidthPercent?: number, boxHeightLines?: number) => project && withBusy(tr("app.s0181"), async () => {
+        const envelope = await transcriptEditingClient.setSubtitleStyle(project.id, preset, position, sourceFontSize, translationFontSize, boxWidthPercent, boxHeightLines);
         if (!envelope.project)
             throw new Error(tr("app.s0182"));
         setProject(envelope.project);
@@ -3154,9 +3158,9 @@ function WorkbenchController() {
 	                <div className="video-frame">
                   {mediaUrl ? <video key={project.id} ref={videoRef} src={mediaUrl} controls preload="metadata" onLoadedMetadata={handleVideoLoadedMetadata} onPlay={() => setPlayback((current) => ({ ...current, playing: true }))} onPause={() => setPlayback((current) => ({ ...current, playing: false }))} onTimeUpdate={handleVideoTimeUpdate}/> : <div className="video-placeholder"><Play size={30}/><span>{tr("app.s0286")}</span></div>}
                   {showSubtitleSafeArea && (
-                    <div className="subtitle-safe-area" aria-label={tr("app.s0287")} data-label={tr("app.s0287")} style={{ inset: `${project.subtitleStyle.safeMarginPercent}% 4%` }}/>
+                    <div className="subtitle-safe-area" aria-label={tr("app.s0287")} data-label={tr("app.s0287")} style={{ top: `${project.subtitleStyle.safeMarginPercent}%`, bottom: `${project.subtitleStyle.safeMarginPercent}%`, left: `${(100 - project.subtitleStyle.boxWidthPercent) / 2}%`, right: `${(100 - project.subtitleStyle.boxWidthPercent) / 2}%` }}/>
                   )}
-                  {captionSegment && captionPrimaryText && <div className={`caption-overlay ${project.subtitleStyle.position}`} data-preset={project.subtitleStyle.preset} data-position={project.subtitleStyle.position} data-outline-width={project.subtitleStyle.outlineWidth} style={captionPreviewStyle}>
+                  {captionSegment && captionPrimaryText && <div className={`caption-overlay ${project.subtitleStyle.position}`} data-preset={project.subtitleStyle.preset} data-position={project.subtitleStyle.position} data-outline-width={project.subtitleStyle.outlineWidth} data-box-width={project.subtitleStyle.boxWidthPercent} data-box-height-lines={project.subtitleStyle.boxHeightLines} aria-label={tr("app.creator.preview.subtitleBox")} style={captionPreviewStyle}>
                     <span className={`caption-primary${playback.playing ? " playing" : ""}`} data-caption-text={playback.playing ? captionPrimaryText : undefined} data-progress={captionProgress.toFixed(3)} style={captionPrimaryStyle}>{captionPrimaryText}</span>
                     {captionSecondaryText && <span className="caption-secondary" style={{ color: project.subtitleStyle.secondaryColor, fontSize: `${Math.max(12, Math.round(project.subtitleStyle.secondaryFontSize * 0.36))}px` }}>{captionSecondaryText}</span>}
                   </div>}
@@ -3231,7 +3235,7 @@ function WorkbenchController() {
                     </section>}
                   </div>}
                   {drawerTab === "history" && <div className="inspector-view"><div className="version-block"><div className="section-title"><div><p className="eyebrow">{tr("app.s0385")}</p><h2>{tr("app.s0386")}</h2></div><History size={16}/></div>{project.versions.slice().reverse().map((version) => <button className="version-row" key={version.id} onClick={() => restoreVersion(version.id)}><span><strong>{versionReasonLabel(version.reason)}</strong><small>{new Date(version.createdAt).toLocaleString(uiLocale)}</small></span><RotateCcw size={14}/></button>)}</div></div>}
-                  {drawerTab === "export" && showExportPanel && <Suspense fallback={null}><ExportPanel embedded ref={exportPanelRef} project={project} busy={Boolean(busy)} subtitleDelivery={subtitleDelivery} subtitleMode={subtitleMode} translationLanguageOptions={translationLanguageOptions} translationLanguages={translationLanguages} selectedSubtitleLanguage={selectedSubtitleLanguage} selectedTranslationPending={selectedTranslationPending} selectedTranslationStale={selectedTranslationStale} confirmStaleTranslation={confirmStaleTranslation} confirmUncutExport={confirmUncutExport} exportFormat={exportFormat} structuredExport={structuredExport} includeSpeakerLabels={includeSpeakerLabels} transcriptionExportErrorCount={transcriptionExportErrors.length} transcriptionExportWarningCount={transcriptionExportWarnings.length} confirmTranscriptionWarnings={confirmTranscriptionWarnings} showSubtitleSafeArea={showSubtitleSafeArea} transcriptionExportBlocked={transcriptionExportBlocked} canExportVideo={capabilities.canExportVideo} activeExportRunning={Boolean(activeExport && ["queued", "running"].includes(activeExport.status))} mediaCapabilityTitle={mediaCapabilityTitle} onClose={() => { setShowExportPanel(false); setDrawerTab("quality"); }} onChangeCanvas={(settings) => void changeCanvas(settings)} onSubtitleDeliveryChange={setSubtitleDelivery} onSubtitleModeChange={(mode) => { setSubtitleMode(mode); setConfirmStaleTranslation(false); }} onSubtitleLanguageChange={(language) => { setSubtitleLanguage(language); setConfirmStaleTranslation(false); }} onExportFormatChange={(format) => { setExportFormat(format); setConfirmTranscriptionWarnings(false); }} onIncludeSpeakerLabelsChange={setIncludeSpeakerLabels} onConfirmWarningsChange={setConfirmTranscriptionWarnings} onConfirmStaleTranslationChange={setConfirmStaleTranslation} onConfirmUncutExportChange={setConfirmUncutExport} onSubtitleStyleChange={(preset, position, sourceFontSize, translationFontSize) => void changeSubtitleStyle(preset, position, sourceFontSize, translationFontSize)} onShowSafeAreaChange={setShowSubtitleSafeArea} onExportTranscript={exportTranscript} onExportVideo={exportVideo}/></Suspense>}
+                  {drawerTab === "export" && showExportPanel && <Suspense fallback={null}><ExportPanel embedded ref={exportPanelRef} project={project} busy={Boolean(busy)} subtitleDelivery={subtitleDelivery} subtitleMode={subtitleMode} translationLanguageOptions={translationLanguageOptions} translationLanguages={translationLanguages} selectedSubtitleLanguage={selectedSubtitleLanguage} selectedTranslationPending={selectedTranslationPending} selectedTranslationStale={selectedTranslationStale} confirmStaleTranslation={confirmStaleTranslation} confirmUncutExport={confirmUncutExport} exportFormat={exportFormat} structuredExport={structuredExport} includeSpeakerLabels={includeSpeakerLabels} transcriptionExportErrorCount={transcriptionExportErrors.length} transcriptionExportWarningCount={transcriptionExportWarnings.length} confirmTranscriptionWarnings={confirmTranscriptionWarnings} showSubtitleSafeArea={showSubtitleSafeArea} transcriptionExportBlocked={transcriptionExportBlocked} canExportVideo={capabilities.canExportVideo} activeExportRunning={Boolean(activeExport && ["queued", "running"].includes(activeExport.status))} mediaCapabilityTitle={mediaCapabilityTitle} onClose={() => { setShowExportPanel(false); setDrawerTab("quality"); }} onChangeCanvas={(settings) => void changeCanvas(settings)} onSubtitleDeliveryChange={setSubtitleDelivery} onSubtitleModeChange={(mode) => { setSubtitleMode(mode); setConfirmStaleTranslation(false); }} onSubtitleLanguageChange={(language) => { setSubtitleLanguage(language); setConfirmStaleTranslation(false); }} onExportFormatChange={(format) => { setExportFormat(format); setConfirmTranscriptionWarnings(false); }} onIncludeSpeakerLabelsChange={setIncludeSpeakerLabels} onConfirmWarningsChange={setConfirmTranscriptionWarnings} onConfirmStaleTranslationChange={setConfirmStaleTranslation} onConfirmUncutExportChange={setConfirmUncutExport} onSubtitleStyleChange={(preset, position, sourceFontSize, translationFontSize, boxWidthPercent, boxHeightLines) => void changeSubtitleStyle(preset, position, sourceFontSize, translationFontSize, boxWidthPercent, boxHeightLines)} onShowSafeAreaChange={setShowSubtitleSafeArea} onExportTranscript={exportTranscript} onExportVideo={exportVideo}/></Suspense>}
 	                </div>
 	              </aside>
 
@@ -3444,6 +3448,7 @@ function WorkbenchController() {
         onInstallUpdate={() => void confirmUpdateInstall()}
         onRefresh={() => void initialize()}
         onPrepareResource={(capability) => void openResourcePreparation(capability, "manage")}
+        onLocalResourcesChange={setLocalResources}
         onChangeResourceLocation={() => void openResourcePreparation("basic_media", "manage")}
         onRemoveResource={(capability) => void removeResourceCapability(capability)}
         onRollbackResource={(capability) => void rollbackResourceCapability(capability)}

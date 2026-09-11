@@ -7,7 +7,7 @@ async function bindMockMedia(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("siaocut.productTour.v3", "complete"));
+  await page.addInitScript(() => localStorage.setItem("siaocut.productTour.v4", "complete"));
 });
 test("walks a newcomer through the real SiaoCut workflow on desktop and mobile", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -18,14 +18,15 @@ test("walks a newcomer through the real SiaoCut workflow on desktop and mobile",
   await expect(tour).toContainText("不读取或上传访问者媒体");
   await tour.getByRole("button", { name: "开始体验" }).click();
 
-  for (const title of [
-    "先从一个项目开始",
-    "画面、字幕和时间保持同步",
-    "像改文档一样完成粗剪",
-  ]) {
-    await expect(page.getByRole("dialog", { name: title })).toBeVisible();
-    if (title !== "像改文档一样完成粗剪") await page.getByRole("button", { name: "下一步" }).click();
-  }
+  await expect(page.getByRole("dialog", { name: "先从一个项目开始" })).toBeVisible();
+  await page.getByRole("button", { name: "下一步" }).click();
+  await expect(page.getByRole("dialog", { name: "本地组件由使用者决定何时更新" })).toBeVisible();
+  await page.getByRole("button", { name: "体验检查更新" }).click();
+  await expect(page.getByText("检查完成；示例组件均为兼容版本，未执行下载。")).toBeVisible();
+  await page.getByRole("button", { name: "下一步" }).click();
+  await expect(page.getByRole("dialog", { name: "画面、字幕和时间保持同步" })).toBeVisible();
+  await page.getByRole("button", { name: "下一步" }).click();
+  await expect(page.getByRole("dialog", { name: "像改文档一样完成粗剪" })).toBeVisible();
 
   for (const highlight of [
     {
@@ -74,14 +75,15 @@ test("walks a newcomer through the real SiaoCut workflow on desktop and mobile",
   }
 
   await page.getByRole("button", { name: "下一步" }).click();
-  for (const title of [
-    "导出前先处理明确问题",
-    "确认字幕、画布，再生成结果",
-    "已经掌握 SiaoCut 主流程",
-  ]) {
-    await expect(page.getByRole("dialog", { name: title })).toBeVisible();
-    if (title !== "已经掌握 SiaoCut 主流程") await page.getByRole("button", { name: "下一步" }).click();
-  }
+  await expect(page.getByRole("dialog", { name: "导出前先处理明确问题" })).toBeVisible();
+  await page.getByRole("button", { name: "下一步" }).click();
+  await expect(page.getByRole("dialog", { name: "字幕框宽度和行数可以分别调整" })).toBeVisible();
+  await page.getByRole("button", { name: "查看字幕框设置" }).click();
+  await expect(page.getByText("字幕框尺寸已说明；可在导出设置中拖动两个滑块继续体验。")).toBeVisible();
+  await page.getByRole("button", { name: "下一步" }).click();
+  await expect(page.getByRole("dialog", { name: "确认字幕、画布，再生成结果" })).toBeVisible();
+  await page.getByRole("button", { name: "下一步" }).click();
+  await expect(page.getByRole("dialog", { name: "已经掌握 SiaoCut 主流程" })).toBeVisible();
 
   await expect(page.getByRole("tab", { name: "导出" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("heading", { name: "导出设置" })).toBeVisible();
@@ -96,7 +98,7 @@ test("walks a newcomer through the real SiaoCut workflow on desktop and mobile",
   expect(mobileCard!.x + mobileCard!.width).toBeLessThanOrEqual(390);
   expect(mobileCard!.y).toBeGreaterThanOrEqual(0);
   expect(mobileCard!.y + mobileCard!.height).toBeLessThanOrEqual(844);
-  for (let step = 0; step < 5; step += 1) {
+  for (let step = 0; step < 6; step += 1) {
     await page.getByRole("button", { name: "下一步" }).click();
     const action = page.locator(".product-tour-hotspot");
     if (await action.count()) {
@@ -138,20 +140,19 @@ test("keeps every interactive tour highlight reachable and clear of its card on 
     await page.goto("/");
     await page.getByRole("button", { name: "使用引导" }).click();
     await page.getByRole("button", { name: "开始体验" }).click();
-    await page.getByRole("button", { name: "下一步" }).click();
-    await page.getByRole("button", { name: "下一步" }).click();
 
     const highlights = [
-      { action: "体验安全重生成", complete: "校验通过；示例字幕未替换，安全流程已完整展示。" },
-      { action: "切换高级审校", complete: "高级审校已打开；可继续点击下方标记定位详情。" },
-      { action: "体验本机 Codex", complete: "建议已进入待审区，项目内容仍保持原样。" },
-      { action: "体验手工交接", complete: "交接说明已生成；任务仍等待明确领取。" },
-      { action: "体验应用建议", complete: "已展示应用结果；示例项目没有被修改。" },
+      { advance: 1, action: "体验检查更新", complete: "检查完成；示例组件均为兼容版本，未执行下载。" },
+      { advance: 3, action: "体验安全重生成", complete: "校验通过；示例字幕未替换，安全流程已完整展示。" },
+      { advance: 1, action: "切换高级审校", complete: "高级审校已打开；可继续点击下方标记定位详情。" },
+      { advance: 2, action: "体验本机 Codex", complete: "建议已进入待审区，项目内容仍保持原样。" },
+      { advance: 1, action: "体验手工交接", complete: "交接说明已生成；任务仍等待明确领取。" },
+      { advance: 1, action: "体验应用建议", complete: "已展示应用结果；示例项目没有被修改。" },
+      { advance: 2, action: "查看字幕框设置", complete: "字幕框尺寸已说明；可在导出设置中拖动两个滑块继续体验。" },
     ];
 
-    for (const [index, highlight] of highlights.entries()) {
-      await page.getByRole("button", { name: "下一步" }).click();
-      if (index === 2) {
+    for (const highlight of highlights) {
+      for (let step = 0; step < highlight.advance; step += 1) {
         await page.getByRole("button", { name: "下一步" }).click();
       }
       const card = page.locator(".product-tour-card");
