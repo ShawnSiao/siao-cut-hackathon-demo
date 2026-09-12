@@ -1,6 +1,6 @@
 # SiaoCut 赛事在线体验版
 
-本仓库是为「外滩大会 · AI Coding 大赛」准备的独立在线体验版。
+本仓库是在线体验版，完整功能需要安装在 windows 中才能使用。
 
 [打开在线体验](https://shawnsiao.github.io/siao-cut-hackathon-demo/)
 
